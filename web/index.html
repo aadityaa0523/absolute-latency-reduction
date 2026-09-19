@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A latency lab for Amazon Bedrock: race the same question through different setups and read the measured results.">
+  <title>Absolute Latency Reduction</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <a class="skip" href="#race">Skip to the live race</a>
+
+  <header class="top">
+    <div class="wrap top-inner">
+      <div>
+        <h1>Absolute Latency Reduction</h1>
+        <p class="tag">Which levers actually make a remote AI model feel faster from India? Measured, not claimed.</p>
+      </div>
+      <p id="status" class="status" role="status">Checking the relay&hellip;</p>
+    </div>
+  </header>
+
+  <div id="banner" class="banner" role="alert" hidden></div>
+
+  <main class="wrap">
+    <section id="race" aria-labelledby="race-h">
+      <h2 id="race-h">Live race</h2>
+      <p class="lede">The same question goes out through different setups at the same instant. Each bar is grey while it waits for the first real token from the model, then blue while text streams in.</p>
+
+      <form id="controls" class="controls">
+        <label for="prompt">Question</label>
+        <select id="prompt" name="prompt"></select>
+        <button type="submit" id="run">Run the race</button>
+      </form>
+      <p id="hint" class="hint"></p>
+
+      <div id="lanes" class="lanes"></div>
+      <div id="axis" class="lane axis" aria-hidden="true" hidden>
+        <span></span>
+        <span class="axis-scale"><span>0</span><span id="axis-max"></span></span>
+        <span></span>
+      </div>
+      <p id="race-summary" class="race-summary" role="status"></p>
+    </section>
+
+    <section id="results" aria-labelledby="res-h">
+      <h2 id="res-h">Benchmark results</h2>
+      <div id="results-body"><p class="muted">Loading&hellip;</p></div>
+    </section>
+
+    <section id="method" aria-labelledby="method-h">
+      <h2 id="method-h">How to trust these numbers</h2>
+      <ul class="method">
+        <li><strong>One change at a time.</strong> Every comparison differs in exactly one setting, on the same question, in random order, one request at a time.</li>
+        <li><strong>First token means a real token.</strong> It is timed at the client when the model's first word arrives, not when a spinner or an acknowledgement appears.</li>
+        <li><strong>Nothing is hidden.</strong> The model client makes one attempt, so throttling shows up as a failure instead of extra delay, and failures are counted and listed.</li>
+        <li><strong>Speedups carry an interval.</strong> "Unclear" means the 95% interval includes 1x, so the data does not show a difference.</li>
+        <li><strong>One race is one sample.</strong> It is a picture, not a measurement. The statistics come from the benchmark runs above.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="wrap foot">
+    <p>Built for the WeMakeDevs x AWS First Commit hackathon on Lambda, DynamoDB, CloudWatch and Amazon Bedrock. Code, tests and the benchmark harness are in the public repository. AI tools used: Claude Code.</p>
+  </footer>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

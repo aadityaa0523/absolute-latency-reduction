@@ -53,7 +53,7 @@ export async function runBenchmark({ config, workload, rounds, warmup, seed, van
   for (let round = 0; round < warmup + rounds; round++) {
     const isWarmup = round < warmup;
     for (const arm of shuffled(pingArms, next)) {
-      const r = await callImpl({ url: config.endpoints[arm.endpoint], method: 'GET', fresh: !!arm.fresh });
+      const r = await callImpl({ url: new URL('health', config.endpoints[arm.endpoint]).href, method: 'GET', fresh: !!arm.fresh });
       await record({ run: runId, round, warmup: isWarmup, promptId: null, stratum: 'ping', arm: arm.id, attempt: 1, ...r });
       await sleep(pauseMs);
     }

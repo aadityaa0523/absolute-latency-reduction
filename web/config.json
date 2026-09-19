@@ -1,0 +1,12 @@
+{
+  "_comment": "Lanes are the setups raced against each other. A lane is skipped when its endpoint is not listed. Add the RelayUrl of the us-east-1 and eu-north-1 stacks under endpoints as virginia and stockholm to enable the region lanes.",
+  "endpoints": { "here": "/" },
+  "lanes": [
+    { "id": "buffered", "label": "Classic: wait for the whole answer", "endpoint": "here", "model": "sonnet-5-global", "stream": false },
+    { "id": "streamed", "label": "Streaming: show tokens as they arrive", "endpoint": "here", "model": "sonnet-5-global", "stream": true },
+    { "id": "prompt-cache", "label": "Streaming + prompt cache", "endpoint": "here", "model": "sonnet-5-global", "stream": true, "promptCache": true, "salt": "session" },
+    { "id": "resp-cache", "label": "Streaming + exact response cache", "endpoint": "here", "model": "sonnet-5-global", "stream": true, "responseCache": true, "repeat": 2 },
+    { "id": "virginia", "label": "Streaming, run from us-east-1 (Virginia)", "endpoint": "virginia", "model": "sonnet-5-global", "stream": true },
+    { "id": "stockholm", "label": "Streaming, run from eu-north-1 (Stockholm)", "endpoint": "stockholm", "model": "sonnet-5-global", "stream": true }
+  ]
+}

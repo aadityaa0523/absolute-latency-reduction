@@ -1,7 +1,7 @@
 import { handle, parseRequest } from './core.js';
 
 const MAX_BODY = 2048;
-const JSON_HEADERS = { 'content-type': 'application/json', 'cache-control': 'no-store' };
+const JSON_HEADERS = { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 
 function reply(sink, status, obj) {
   sink.head(status, JSON_HEADERS);
@@ -9,10 +9,22 @@ function reply(sink, status, obj) {
   return sink.end();
 }
 
+function serveGet(path, sink, deps) {
+  if (path === '/health') return reply(sink, 200, { ok: true, region: deps.region, provider: deps.provider.name });
+  if (path === '/prompts.json') {
+    return reply(sink, 200, [...deps.workload.prompts.values()].map(({ id, stratum, question }) => ({ id, stratum, question })));
+  }
+  const asset = deps.web?.get(path === '/' ? '/index.html' : path);
+  if (!asset) return reply(sink, 404, { t: 'error', code: 'not_found' });
+  sink.head(200, asset.headers);
+  sink.write(asset.body);
+  return sink.end();
+}
+
 // Transport-agnostic request handler. `sink` is {head(status, headers), write(str), end()}, implemented by
 // the Lambda stream (handler.js) and by node:http (local.js), so tests exercise the real logic.
-export async function serve({ method, rawBody = '' }, sink, deps) {
-  if (method === 'GET') return reply(sink, 200, { ok: true, region: deps.region, provider: deps.provider.name });
+export async function serve({ method, path = '/', rawBody = '' }, sink, deps) {
+  if (method === 'GET') return serveGet(path, sink, deps);
   if (method !== 'POST') return reply(sink, 405, { t: 'error', code: 'method_not_allowed' });
   if (Buffer.byteLength(rawBody) > MAX_BODY) return reply(sink, 413, { t: 'error', code: 'too_large' });
   const parsed = parseRequest(rawBody, deps.workload);

@@ -14,7 +14,7 @@ It does not change how Bedrock serves a model, and it does not claim to. True sp
 Needs Node 22 or newer. No `npm install`: the AWS SDK ships with the Lambda runtime and the harness uses only Node built-ins.
 
 ```bash
-npm test                 # 26 tests: relay logic, statistics, harness end to end
+npm test                 # 39 tests: relay, statistics, harness end to end, page logic and serving
 npm run local            # relay on http://127.0.0.1:8787 with a SYNTHETIC mock model
 node relay/local.js --bedrock   # same, but real Bedrock with your local AWS credentials
 ```
@@ -27,6 +27,20 @@ cp bench/arms.example.json bench/arms.json                       # paste each st
 node bench/run.js --arms bench/arms.json --vantage "Bengaluru, <your network>" --rounds 10
 node bench/report.js results/<run id>                            # writes report.md and summary.json
 ```
+
+## The demo page
+
+The relay serves its own page at `/`, so the public URL is just the function URL (no CloudFront or bucket needed). It has two parts:
+
+- **Live race.** Pick a question and the same request goes out through several setups at once: classic buffered, streaming, prompt cache, response cache (asked twice), and one lane per configured region. Bars are grey while waiting for the first real token and blue while text streams. A single race is a picture, not a measurement, and the page says so.
+- **Benchmark results.** Drawn from `web/results.json`: paired speedups with their 95% intervals, every setup side by side, and the network baseline. It stays empty until a real run is published.
+
+```bash
+node relay/local.js                                 # page at http://127.0.0.1:8787 (mock model, red SYNTHETIC banner)
+node scripts/publish-results.js results/<run id>    # copy a real run to web/results.json
+```
+
+`publish-results.js` refuses any run that contains mock-model data, and the page shows a red banner whenever the relay it talks to is not real Bedrock. To enable the region lanes, add the other stacks' `RelayUrl` outputs to `web/config.json` as `virginia` and `stockholm`, then redeploy.
 
 ## How the comparison stays honest
 

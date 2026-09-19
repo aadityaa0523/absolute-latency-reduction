@@ -10,6 +10,7 @@ rmSync('build', { recursive: true, force: true });
 mkdirSync(stage, { recursive: true });
 cpSync('relay', `${stage}/relay`, { recursive: true, filter: (p) => !p.endsWith('local.js') });
 cpSync('workload', `${stage}/workload`, { recursive: true });
+cpSync('web', `${stage}/web`, { recursive: true });
 copyFileSync('package.json', `${stage}/package.json`);
 // Windows 10+ ships bsdtar, which writes zip when asked with -a.
 execFileSync('tar', ['-a', '-c', '-f', zip, '-C', stage, '.'], { stdio: 'inherit' });

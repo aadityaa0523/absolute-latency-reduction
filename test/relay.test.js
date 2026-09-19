@@ -124,7 +124,7 @@ test('serve: streaming mode writes one line at a time, buffered mode releases ev
 });
 
 test('serve: health check, method and size guards', async () => {
-  const s1 = fakeSink(); await serve({ method: 'GET' }, s1, deps());
+  const s1 = fakeSink(); await serve({ method: 'GET', path: '/health' }, s1, deps());
   assert.equal(s1.log[0].head, 200);
   assert.equal(JSON.parse(s1.log[1].write).ok, true);
   const s2 = fakeSink(); await serve({ method: 'PUT', rawBody: '' }, s2, deps());

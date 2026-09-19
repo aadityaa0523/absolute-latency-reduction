@@ -37,8 +37,8 @@ test('client: buffered mode delivers the first token only when the whole answer 
 test('client: a second request on the kept-alive connection reports reused and no setup cost', async () => {
   const srv = await startLocal();
   try {
-    await call({ url: srv.url, method: 'GET' });
-    const r = await call({ url: srv.url, method: 'GET' });
+    await call({ url: `${srv.url}health`, method: 'GET' });
+    const r = await call({ url: `${srv.url}health`, method: 'GET' });
     assert.equal(r.reused, true);
     assert.equal(r.tcp_ms, 0);
   } finally { await srv.close(); }

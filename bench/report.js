@@ -58,11 +58,13 @@ export function buildReport(records, meta) {
   out.push(table(['Arm', 'Try', 'Endpoint', 'Model', 'Mode', 'OK', 'TTFT p50', 'p95', 'p99', 'Done p50', 'p95', 'p99', 'OTPS', 'Out tok', 'Prompt-cache read', 'Resp-cache hit'], modelRows), '');
 
   // Network table from ping arms
-  const pingRows = [];
+  const pingRows = [], network = [];
   for (const arm of meta.arms.filter((a) => a.kind === 'ping')) {
     const good = measured.filter((r) => r.arm === arm.id && ok(r)), fresh = good.filter((r) => !r.reused);
     const t = summarize(good.map((r) => r.complete_ms));
-    pingRows.push([arm.id, arm.endpoint, arm.fresh ? 'new connection' : 'kept alive', `${good.length}`, f(median(fresh.map((r) => r.dns_ms))), f(median(fresh.map((r) => r.tcp_ms))), f(median(fresh.map((r) => r.tls_ms))), f(t.p50), f(t.p95)]);
+    const dns = median(fresh.map((r) => r.dns_ms)), tcp = median(fresh.map((r) => r.tcp_ms)), tls = median(fresh.map((r) => r.tls_ms));
+    network.push({ arm: arm.id, endpoint: arm.endpoint, fresh: !!arm.fresh, n: good.length, dns, tcp, tls, p50: t.p50, p95: t.p95 });
+    pingRows.push([arm.id, arm.endpoint, arm.fresh ? 'new connection' : 'kept alive', `${good.length}`, f(dns), f(tcp), f(tls), f(t.p50), f(t.p95)]);
   }
   if (pingRows.length) out.push('## Network baseline (GET, no model involved)', '', 'This is the floor for each endpoint: connection setup plus one Lambda invocation. DNS, TCP and TLS are medians over new connections only.', '', table(['Arm', 'Endpoint', 'Connection', 'n', 'DNS', 'TCP', 'TLS', 'Round trip p50', 'p95'], pingRows), '');
 
@@ -98,7 +100,8 @@ export function buildReport(records, meta) {
   if (errs.size) out.push(table(['Failure', 'Count'], [...errs].sort((x, y) => y[1] - x[1]).slice(0, 10).map(([k, n]) => [k, n])), '');
   for (const w of warnings) out.push(`- Warning: ${w}`);
   out.push('', '## Limits', '', '- One client vantage per run; results describe that network path, not India as a whole.', '- Bedrock capacity varies with time of day; compare arms only within a run.', '- Latency percentiles are descriptive of this sample, not a guarantee.');
-  return { markdown: out.join('\n') + '\n', summary: { runId: meta.runId, synthetic, vantage: meta.vantage, arms: summaryArms, comparisons: summaryComps, warnings } };
+  const info = { startedAt: meta.startedAt, rounds: meta.rounds, warmup: meta.warmup, commit: meta.commit, strata: meta.strata, requests: measured.length, failed: measured.filter((r) => !ok(r)).length };
+  return { markdown: out.join('\n') + '\n', summary: { runId: meta.runId, synthetic, vantage: meta.vantage, info, arms: summaryArms, network, comparisons: summaryComps, warnings } };
 }
 
 export async function reportDir(dir) {
