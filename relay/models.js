@@ -18,7 +18,8 @@ export const MODELS = {
   // Mumbai reaches these only through the global profile. Priority tier is supported for Nova 2 Lite.
   'nova-2-lite-global': { id: 'global.amazon.nova-2-lite-v1:0', cache: 'explicit', minCacheTokens: 1024 },
   // Needs at least 4,096 prefix tokens for a cache point; the workload's prefix is shorter, which is itself a finding.
-  'haiku-4-5-global': { id: 'global.anthropic.claude-haiku-4-5-20251001-v1:0', cache: 'explicit', minCacheTokens: 4096 },
+  // cacheTtl 1h (the card lists 5 minutes and 1 hour for Claude) keeps the cached prefix warm between sparse requests.
+  'haiku-4-5-global': { id: 'global.anthropic.claude-haiku-4-5-20251001-v1:0', cache: 'explicit', minCacheTokens: 4096, cacheTtl: '1h' },
   // Adaptive thinking is on by default for this model, which would put reasoning time inside TTFT. Turn it off.
-  'sonnet-5-global': { id: 'global.anthropic.claude-sonnet-5', cache: 'explicit', minCacheTokens: 1024, extra: { thinking: { type: 'disabled' } } },
+  'sonnet-5-global': { id: 'global.anthropic.claude-sonnet-5', cache: 'explicit', minCacheTokens: 1024, cacheTtl: '1h', extra: { thinking: { type: 'disabled' } } },
 };

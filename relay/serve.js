@@ -3,6 +3,9 @@ import { handle, parseRequest } from './core.js';
 const MAX_BODY = 2048;
 const JSON_HEADERS = { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 
+// The scheduled keep-warm event (EventBridge) only needs the container initialised, not a response.
+export const isWarmEvent = (event) => event?.warm === true;
+
 function reply(sink, status, obj) {
   sink.head(status, JSON_HEADERS);
   sink.write(JSON.stringify(obj));
@@ -27,7 +30,7 @@ export async function serve({ method, path = '/', rawBody = '' }, sink, deps) {
   if (method === 'GET') return serveGet(path, sink, deps);
   if (method !== 'POST') return reply(sink, 405, { t: 'error', code: 'method_not_allowed' });
   if (Buffer.byteLength(rawBody) > MAX_BODY) return reply(sink, 413, { t: 'error', code: 'too_large' });
-  const parsed = parseRequest(rawBody, deps.workload);
+  const parsed = parseRequest(rawBody, deps.workload, { budgetMs: deps.budgetMs });
   if (!parsed.ok) return reply(sink, parsed.status, { t: 'error', code: 'bad_request', message: parsed.message });
 
   sink.head(200, { 'content-type': 'application/x-ndjson', 'cache-control': 'no-store', 'x-accel-buffering': 'no' });

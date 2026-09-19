@@ -6,14 +6,14 @@ export async function bedrockProvider(region) {
   const client = new BedrockRuntimeClient({ region, maxAttempts: 1 });
   return {
     name: 'bedrock',
-    async *stream({ modelId, system, question, maxTokens, cachePoint, extra }) {
+    async *stream({ modelId, system, question, maxTokens, cachePoint, cacheTtl, extra, signal }) {
       const res = await client.send(new ConverseStreamCommand({
         modelId,
-        system: [{ text: system }, ...(cachePoint ? [{ cachePoint: { type: 'default' } }] : [])],
+        system: [{ text: system }, ...(cachePoint ? [{ cachePoint: { type: 'default', ...(cacheTtl ? { ttl: cacheTtl } : {}) } }] : [])],
         messages: [{ role: 'user', content: [{ text: question }] }],
         inferenceConfig: { maxTokens, temperature: 0 },
         ...(extra ? { additionalModelRequestFields: extra } : {}),
-      }));
+      }), { abortSignal: signal });
       let stopReason;
       for await (const ev of res.stream) {
         const delta = ev.contentBlockDelta?.delta;

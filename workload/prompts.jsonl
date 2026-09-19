@@ -4,16 +4,40 @@
 {"id":"s04","stratum":"short","handbook":false,"question":"Give one advantage and one risk of caching model responses."}
 {"id":"s05","stratum":"short","handbook":false,"question":"Explain HTTP response streaming in one short paragraph."}
 {"id":"s06","stratum":"short","handbook":false,"question":"What does a p95 latency number tell you that an average does not?"}
-{"id":"h01","stratum":"handbook","handbook":true,"question":"What is the minimum attendance required in each course?"}
-{"id":"h02","stratum":"handbook","handbook":true,"question":"How much is the late fee on an overdue library book?"}
-{"id":"h03","stratum":"handbook","handbook":true,"question":"What time do the hostel gates close on Friday?"}
-{"id":"h04","stratum":"handbook","handbook":true,"question":"How many days do I have to apply for re-evaluation, and what does it cost?"}
-{"id":"h05","stratum":"handbook","handbook":true,"question":"When does the grievance committee meet?"}
-{"id":"h06","stratum":"handbook","handbook":true,"question":"What grade point average keeps the merit scholarship?"}
-{"id":"h07","stratum":"handbook","handbook":true,"question":"What happens if tuition is unpaid after 4 weeks?"}
-{"id":"h08","stratum":"handbook","handbook":true,"question":"Within how long must a laboratory incident be reported?"}
-{"id":"h09","stratum":"handbook","handbook":true,"question":"How long can a term-break internship last, and who must approve it?"}
-{"id":"h10","stratum":"handbook","handbook":true,"question":"How many books can an undergraduate borrow at once?"}
+{"id":"h01","stratum":"handbook","handbook":true,"question":"What is the minimum attendance required in each course?","expect":["\\b75\\b"]}
+{"id":"h02","stratum":"handbook","handbook":true,"question":"How much is the late fee on an overdue library book?","expect":["\\b(2|two)\\b","rupee|\\brs\\b|\\u20b9"]}
+{"id":"h03","stratum":"handbook","handbook":true,"question":"What time do the hostel gates close on Friday?","expect":["11[:.]30"]}
+{"id":"h04","stratum":"handbook","handbook":true,"question":"How many days do I have to apply for re-evaluation, and what does it cost?","expect":["\\b(5|five)\\b","\\b500\\b"]}
+{"id":"h05","stratum":"handbook","handbook":true,"question":"When does the grievance committee meet?","expect":["first tuesday"]}
+{"id":"h06","stratum":"handbook","handbook":true,"question":"What grade point average keeps the merit scholarship?","expect":["8\\.5"]}
+{"id":"h07","stratum":"handbook","handbook":true,"question":"What happens if tuition is unpaid after 4 weeks?","expect":["block"]}
+{"id":"h08","stratum":"handbook","handbook":true,"question":"Within how long must a laboratory incident be reported?","expect":["\\b(1|one)[ -]hour"]}
+{"id":"h09","stratum":"handbook","handbook":true,"question":"How long can a term-break internship last, and who must approve it?","expect":["\\b(2|two)[ -]months?","placement"]}
+{"id":"h10","stratum":"handbook","handbook":true,"question":"How many books can an undergraduate borrow at once?","expect":["\\b(4|four)\\b"]}
 {"id":"l01","stratum":"long","handbook":true,"question":"Summarise every clause that involves a fee or a fine as a numbered list, one line each."}
 {"id":"l02","stratum":"long","handbook":true,"question":"List every deadline in the handbook (in days or dates) with the clause number it comes from."}
 {"id":"l03","stratum":"long","handbook":true,"question":"Explain what a student must do, step by step, to appeal an examination result."}
+{"id":"p01","stratum":"paraphrase","handbook":true,"base":"h01","question":"What's the min attendance needed for each course?","expect":["\\b75\\b"]}
+{"id":"p02","stratum":"paraphrase","handbook":true,"base":"h02","question":"How much do I pay per day for an overdue library book?","expect":["\\b(2|two)\\b","rupee|\\brs\\b|\\u20b9"]}
+{"id":"p03","stratum":"paraphrase","handbook":true,"base":"h03","question":"At what time do the hostel gates close on Friday?","expect":["11[:.]30"]}
+{"id":"p04","stratum":"paraphrase","handbook":true,"base":"h04","question":"How many days do I have to apply for re-evaluation, and what is the fee?","expect":["\\b(5|five)\\b","\\b500\\b"]}
+{"id":"p05","stratum":"paraphrase","handbook":true,"base":"h05","question":"On which day does the grievance committee meet?","expect":["first tuesday"]}
+{"id":"p06","stratum":"paraphrase","handbook":true,"base":"h06","question":"Which grade point average do I need to keep the merit scholarship?","expect":["8\\.5"]}
+{"id":"p07","stratum":"paraphrase","handbook":true,"base":"h07","question":"What occurs if I haven't paid tuition after 4 weeks?","expect":["block"]}
+{"id":"p08","stratum":"paraphrase","handbook":true,"base":"h08","question":"Within how long must a lab incident be reported?","expect":["\\b(1|one)[ -]hour"]}
+{"id":"p09","stratum":"paraphrase","handbook":true,"base":"h09","question":"Who must approve a term-break internship, and how long can it last?","expect":["\\b(2|two)[ -]months?","placement"]}
+{"id":"p10","stratum":"paraphrase","handbook":true,"base":"h10","question":"HOW MANY BOOKS can an undergraduate borrow at once??","expect":["\\b(4|four)\\b"]}
+{"id":"p11","stratum":"paraphrase","handbook":true,"base":"h05","question":"When does the grievance committee meet each month?","expect":["first tuesday"]}
+{"id":"p12","stratum":"paraphrase","handbook":true,"base":"h08","question":"How long do I have to report a lab incident?","expect":["\\b(1|one)[ -]hour"]}
+{"id":"x01","stratum":"nearmiss","handbook":true,"base":"h01","question":"What is the maximum attendance required in each course?"}
+{"id":"x02","stratum":"nearmiss","handbook":true,"base":"h02","question":"How much is the late fee on an overdue lab book?"}
+{"id":"x03","stratum":"nearmiss","handbook":true,"base":"h03","question":"What time do the hostel gates close on Sunday?"}
+{"id":"x04","stratum":"nearmiss","handbook":true,"base":"h04","question":"How many days do I have to apply for re-evaluation, and what does it cost for two papers?"}
+{"id":"x05","stratum":"nearmiss","handbook":true,"base":"h05","question":"When did the grievance committee last meet?"}
+{"id":"x06","stratum":"nearmiss","handbook":true,"base":"h06","question":"What grade point average do I need to earn the merit scholarship?"}
+{"id":"x07","stratum":"nearmiss","handbook":true,"base":"h07","question":"What happens if tuition is paid after 4 weeks?"}
+{"id":"x08","stratum":"nearmiss","handbook":true,"base":"h08","question":"Within how long must a laboratory incident be reported to the dean?"}
+{"id":"x09","stratum":"nearmiss","handbook":true,"base":"h09","question":"How long can a term-break internship last, and who must reject it?"}
+{"id":"x10","stratum":"nearmiss","handbook":true,"base":"h10","question":"How many books can a postgraduate borrow at once?"}
+{"id":"x11","stratum":"nearmiss","handbook":true,"base":"h01","question":"What is the minimum attendance not required in each course?"}
+{"id":"x12","stratum":"nearmiss","handbook":true,"base":"h04","question":"How many days do I have to apply for re-evaluation, and what does it cost after 5 days?"}
