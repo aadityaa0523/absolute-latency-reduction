@@ -1,0 +1,35 @@
+{
+  "_comment": "Copy to bench/arms.json and replace the three URLs with the RelayUrl output of each regional stack. Every latency lever is a separate arm so each comparison changes exactly one thing.",
+  "endpoints": {
+    "virginia": "https://REPLACE.lambda-url.us-east-1.on.aws/",
+    "stockholm": "https://REPLACE.lambda-url.eu-north-1.on.aws/",
+    "mumbai": "https://REPLACE.lambda-url.ap-south-1.on.aws/"
+  },
+  "arms": [
+    { "id": "far-buffered", "endpoint": "virginia", "model": "sonnet-5-global", "stream": false },
+    { "id": "far-streamed", "endpoint": "virginia", "model": "sonnet-5-global", "stream": true },
+    { "id": "eu-streamed", "endpoint": "stockholm", "model": "sonnet-5-global", "stream": true },
+    { "id": "mum-streamed", "endpoint": "mumbai", "model": "sonnet-5-global", "stream": true },
+    { "id": "mum-prompt-cache", "endpoint": "mumbai", "model": "sonnet-5-global", "stream": true, "promptCache": true, "salt": "run" },
+    { "id": "mum-resp-cache", "endpoint": "mumbai", "model": "sonnet-5-global", "stream": true, "responseCache": true, "repeat": 2 },
+
+    { "id": "haiku3-inregion", "endpoint": "mumbai", "model": "claude-3-haiku-inregion", "stream": true },
+    { "id": "haiku3-apac", "endpoint": "mumbai", "model": "claude-3-haiku-apac", "stream": true },
+    { "id": "haiku45-global", "endpoint": "mumbai", "model": "haiku-4-5-global", "stream": true },
+    { "id": "nova-lite-apac", "endpoint": "mumbai", "model": "nova-lite-apac", "stream": true },
+
+    { "id": "ping-virginia", "kind": "ping", "endpoint": "virginia", "fresh": true },
+    { "id": "ping-stockholm", "kind": "ping", "endpoint": "stockholm", "fresh": true },
+    { "id": "ping-mumbai", "kind": "ping", "endpoint": "mumbai", "fresh": true },
+    { "id": "ping-mumbai-warm", "kind": "ping", "endpoint": "mumbai", "fresh": false }
+  ],
+  "comparisons": [
+    { "name": "Streaming (far region)", "a": "far-buffered", "b": "far-streamed" },
+    { "name": "Region: Virginia to Stockholm", "a": "far-streamed", "b": "eu-streamed" },
+    { "name": "Region: Stockholm to Mumbai", "a": "eu-streamed", "b": "mum-streamed" },
+    { "name": "Region: Virginia to Mumbai", "a": "far-streamed", "b": "mum-streamed" },
+    { "name": "Prompt cache (long prefix)", "a": "mum-streamed", "b": "mum-prompt-cache", "strata": ["handbook", "long"] },
+    { "name": "Response cache hit", "a": "mum-streamed", "b": "mum-resp-cache", "bAttempt": 2 },
+    { "name": "Profile: in-Region to APAC (Claude 3 Haiku)", "a": "haiku3-inregion", "b": "haiku3-apac" }
+  ]
+}

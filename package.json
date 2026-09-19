@@ -1,0 +1,15 @@
+{
+  "name": "absolute-latency-reduction",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A latency lab for Amazon Bedrock: a streaming relay plus a benchmark harness that compares regions, streaming, prompt caching and response caching with honest percentiles.",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --test",
+    "local": "node relay/local.js",
+    "bench": "node bench/run.js",
+    "report": "node bench/report.js",
+    "package": "node scripts/package.js"
+  }
+}

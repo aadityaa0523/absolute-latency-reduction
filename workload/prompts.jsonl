@@ -1,0 +1,19 @@
+{"id":"s01","stratum":"short","handbook":false,"question":"In two sentences, what is time to first token in LLM serving?"}
+{"id":"s02","stratum":"short","handbook":false,"question":"Name three factors that add network latency between a user in India and a server in the United States."}
+{"id":"s03","stratum":"short","handbook":false,"question":"What is the difference between latency and throughput? Answer in under 60 words."}
+{"id":"s04","stratum":"short","handbook":false,"question":"Give one advantage and one risk of caching model responses."}
+{"id":"s05","stratum":"short","handbook":false,"question":"Explain HTTP response streaming in one short paragraph."}
+{"id":"s06","stratum":"short","handbook":false,"question":"What does a p95 latency number tell you that an average does not?"}
+{"id":"h01","stratum":"handbook","handbook":true,"question":"What is the minimum attendance required in each course?"}
+{"id":"h02","stratum":"handbook","handbook":true,"question":"How much is the late fee on an overdue library book?"}
+{"id":"h03","stratum":"handbook","handbook":true,"question":"What time do the hostel gates close on Friday?"}
+{"id":"h04","stratum":"handbook","handbook":true,"question":"How many days do I have to apply for re-evaluation, and what does it cost?"}
+{"id":"h05","stratum":"handbook","handbook":true,"question":"When does the grievance committee meet?"}
+{"id":"h06","stratum":"handbook","handbook":true,"question":"What grade point average keeps the merit scholarship?"}
+{"id":"h07","stratum":"handbook","handbook":true,"question":"What happens if tuition is unpaid after 4 weeks?"}
+{"id":"h08","stratum":"handbook","handbook":true,"question":"Within how long must a laboratory incident be reported?"}
+{"id":"h09","stratum":"handbook","handbook":true,"question":"How long can a term-break internship last, and who must approve it?"}
+{"id":"h10","stratum":"handbook","handbook":true,"question":"How many books can an undergraduate borrow at once?"}
+{"id":"l01","stratum":"long","handbook":true,"question":"Summarise every clause that involves a fee or a fine as a numbered list, one line each."}
+{"id":"l02","stratum":"long","handbook":true,"question":"List every deadline in the handbook (in days or dates) with the clause number it comes from."}
+{"id":"l03","stratum":"long","handbook":true,"question":"Explain what a student must do, step by step, to appeal an examination result."}
