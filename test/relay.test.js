@@ -31,7 +31,7 @@ test('parseRequest rejects bad input with the right status', () => {
     [req({ model: 'gpt-anything' }), 400],
     [req({ model: '__proto__' }), 400], [req({ model: 'constructor' }), 400], [req({ model: 'toString' }), 400],
     [req({ stream: 'yes' }), 400], [req({ responseCache: 1 }), 400],
-    [req({ promptCache: true, model: 'claude-3-haiku-apac' }), 400],
+    [req({ promptCache: true, model: 'gpt-oss-20b-inregion' }), 400],
     [req({ maxTokens: MAX_TOKENS + 1 }), 400], [req({ maxTokens: 0 }), 400], [req({ maxTokens: 1.5 }), 400],
     [req({ prefixSalt: 'has space' }), 400], [req({ namespace: 'x'.repeat(41) }), 400],
   ];
@@ -97,6 +97,34 @@ test('prompt cache flag reaches the provider as a cache point, and the salt lead
   assert.ok(seen[0].system.startsWith('[run run7]\n'));
   assert.equal(seen[1].cachePoint, false);
   assert.ok(!seen[1].system.startsWith('['));
+});
+
+test('model-specific request fields reach the provider: Sonnet 5 must have thinking turned off', async () => {
+  const seen = [];
+  const spy = { name: 'mock', async *stream(a) { seen.push(a); yield { type: 'usage', usage: {} }; } };
+  await collect(req({ model: 'sonnet-5-global' }), deps({ provider: spy }));
+  await collect(req({ model: 'nova-lite-apac' }), deps({ provider: spy }));
+  assert.deepEqual(seen[0].extra, { thinking: { type: 'disabled' } });
+  assert.equal(seen[1].extra, undefined);
+});
+
+test('a reasoning model is flagged on done, and its reasoning is never forwarded to the client', async () => {
+  const evs = await collect(req(), deps({ provider: mockProvider({ ttftMs: 1, tokensPerSec: 1000, outTokens: 2, reasoning: true }) }));
+  const done = evs.at(-1);
+  assert.equal(done.reasoning, true);
+  assert.ok(done.srv.first_reasoning_ms >= 0);
+  assert.deepEqual(evs.map((e) => e.t), ['accepted', 'token', 'token', 'done']);
+  const plain = await collect(req(), deps());
+  assert.equal(plain.at(-1).reasoning, false);
+});
+
+test('every allowlisted model has an id, and explicit-cache models state their minimum prefix', async () => {
+  const { MODELS } = await import('../relay/models.js');
+  for (const [handle, m] of Object.entries(MODELS)) {
+    assert.match(m.id, /^[a-z0-9.-]+\.[A-Za-z0-9.:_-]+$/, handle);
+    assert.ok(['explicit', 'none'].includes(m.cache), handle);
+    if (m.cache === 'explicit') assert.ok(m.minCacheTokens >= 512, `${handle} needs minCacheTokens`);
+  }
 });
 
 test('cacheKey ignores whitespace but changes with anything that can change the answer', () => {

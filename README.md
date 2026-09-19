@@ -14,7 +14,7 @@ It does not change how Bedrock serves a model, and it does not claim to. True sp
 Needs Node 22 or newer. No `npm install`: the AWS SDK ships with the Lambda runtime and the harness uses only Node built-ins.
 
 ```bash
-npm test                 # 39 tests: relay, statistics, harness end to end, page logic and serving
+npm test                 # 43 tests: relay, statistics, harness end to end, page logic and serving
 npm run local            # relay on http://127.0.0.1:8787 with a SYNTHETIC mock model
 node relay/local.js --bedrock   # same, but real Bedrock with your local AWS credentials
 ```
@@ -59,6 +59,12 @@ The function URL is public so a browser page and the harness can call it. It can
 ## Status
 
 Verified with the mock model only: the request path, caching semantics, statistics and the harness. **No real Bedrock latency has been measured yet**, because the AWS account is still under new-account verification (Bedrock calls and CloudFront creation are refused). Nothing in `results/` should be quoted until it comes from a run without the SYNTHETIC banner.
+
+To see when the block lifts, without sending a single token, check whether the account is authorized for a model (it reads `NOT_AUTHORIZED` today for every model, including Amazon's own):
+
+```bash
+aws bedrock get-foundation-model-availability --model-id amazon.nova-lite-v1:0 --region ap-south-1 --profile hackathon
+```
 
 ## Rules and disclosure
 

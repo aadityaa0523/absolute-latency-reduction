@@ -2,7 +2,7 @@
 // provider "mock", and the report refuses to present a run containing it as a measurement.
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export function mockProvider({ ttftMs = 120, tokensPerSec = 60, outTokens = 24, cachedTtftFactor = 0.3 } = {}) {
+export function mockProvider({ ttftMs = 120, tokensPerSec = 60, outTokens = 24, cachedTtftFactor = 0.3, reasoning = false } = {}) {
   const seen = new Set();
   return {
     name: 'mock',
@@ -12,6 +12,7 @@ export function mockProvider({ ttftMs = 120, tokensPerSec = 60, outTokens = 24, 
       // That is what lets the tests prove the benchmark's cold-prefix salt really defeats a hidden cache.
       const hit = seen.has(system);
       seen.add(system);
+      if (reasoning) yield { type: 'reasoning' };
       await sleep(hit ? ttftMs * cachedTtftFactor : ttftMs);
       const n = Math.min(outTokens, maxTokens);
       for (let i = 0; i < n; i++) {

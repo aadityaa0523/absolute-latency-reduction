@@ -66,13 +66,16 @@ export async function* handle(req, deps) {
   }
 
   const tSend = clock();
-  let firstUp = null, usage = zeroUsage(), upstreamLatency = null, stopReason = null, text = '';
+  let firstUp = null, firstReasoning = null, usage = zeroUsage(), upstreamLatency = null, stopReason = null, text = '';
   try {
     for await (const ev of provider.stream({
       modelId: req.model.id, system: buildSystem(workload, req.prompt, req.prefixSalt),
-      question: req.prompt.question, maxTokens: req.maxTokens, cachePoint: req.promptCache,
+      question: req.prompt.question, maxTokens: req.maxTokens, cachePoint: req.promptCache, extra: req.model.extra,
     })) {
-      if (ev.type === 'text') {
+      if (ev.type === 'reasoning') {
+        // Reasoning content is not forwarded, only noted: it means the first answer token came after thinking.
+        firstReasoning ??= clock();
+      } else if (ev.type === 'text') {
         if (firstUp === null) firstUp = clock();
         text += ev.text;
         yield { t: 'token', text: ev.text };
@@ -87,8 +90,10 @@ export async function* handle(req, deps) {
   const tEnd = clock();
   yield {
     t: 'done', route: 'model', cache: cacheState, model: req.modelHandle, provider: provider.name, region, usage, stopReason,
+    reasoning: firstReasoning !== null,
     srv: {
       first_token_ms: firstUp === null ? null : firstUp - t0, upstream_ttft_ms: firstUp === null ? null : firstUp - tSend,
+      first_reasoning_ms: firstReasoning === null ? null : firstReasoning - t0,
       upstream_latency_ms: upstreamLatency, total_ms: tEnd - t0,
     },
   };

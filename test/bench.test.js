@@ -62,6 +62,15 @@ test('validateConfig reports every problem', () => {
   assert.equal(p.length, 5, p.join('\n'));
 });
 
+test('the report warns when a reasoning model was measured', async () => {
+  const { buildReport } = await import('../bench/report.js');
+  const rec = (arm, reasoning) => ({ arm, attempt: 1, warmup: false, ok: true, round: 0, promptId: 'h01', stratum: 'handbook', ttft_ms: 500, complete_ms: 900, done: { route: 'model', provider: 'bedrock', cache: 'off', reasoning, usage: { outputTokens: 20 } } });
+  const meta = { runId: 't', startedAt: 'x', vantage: 'v', node: 'n', commit: 'c', rounds: 1, warmup: 0, seed: 1, strata: ['handbook'], handbookVersion: 'h', endpoints: {}, comparisons: [], arms: [{ id: 'think', endpoint: 'e', model: 'gpt-oss-20b-inregion' }, { id: 'plain', endpoint: 'e', model: 'nova-lite-apac' }] };
+  const { summary } = buildReport([rec('think', true), rec('plain', false)], meta);
+  assert.equal(summary.warnings.length, 1);
+  assert.match(summary.warnings[0], /think.*reasoning model/);
+});
+
 test('the shipped example arms file is valid', async () => {
   const cfg = JSON.parse(await readFile(new URL('../bench/arms.example.json', import.meta.url), 'utf8'));
   assert.deepEqual(validateConfig(cfg), []);

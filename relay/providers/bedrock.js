@@ -6,17 +6,19 @@ export async function bedrockProvider(region) {
   const client = new BedrockRuntimeClient({ region, maxAttempts: 1 });
   return {
     name: 'bedrock',
-    async *stream({ modelId, system, question, maxTokens, cachePoint }) {
+    async *stream({ modelId, system, question, maxTokens, cachePoint, extra }) {
       const res = await client.send(new ConverseStreamCommand({
         modelId,
         system: [{ text: system }, ...(cachePoint ? [{ cachePoint: { type: 'default' } }] : [])],
         messages: [{ role: 'user', content: [{ text: question }] }],
         inferenceConfig: { maxTokens, temperature: 0 },
+        ...(extra ? { additionalModelRequestFields: extra } : {}),
       }));
       let stopReason;
       for await (const ev of res.stream) {
-        const text = ev.contentBlockDelta?.delta?.text;
-        if (text) yield { type: 'text', text };
+        const delta = ev.contentBlockDelta?.delta;
+        if (delta?.text) yield { type: 'text', text: delta.text };
+        else if (delta?.reasoningContent) yield { type: 'reasoning' };
         else if (ev.messageStop) stopReason = ev.messageStop.stopReason;
         else if (ev.metadata) yield { type: 'usage', usage: ev.metadata.usage ?? {}, latencyMs: ev.metadata.metrics?.latencyMs, stopReason };
       }

@@ -93,6 +93,10 @@ export function buildReport(records, meta) {
     const leaked = measured.filter((r) => r.arm === arm.id && ok(r) && r.done.usage?.cacheReadInputTokens > 0).length;
     if (leaked) warnings.push(`Arm ${arm.id} has prompt-cache off but ${leaked} request(s) read from a cache; it is not a clean control.`);
   }
+  for (const arm of meta.arms.filter((a) => a.kind !== 'ping')) {
+    const n = measured.filter((r) => r.arm === arm.id && ok(r) && r.done.reasoning).length;
+    if (n) warnings.push(`Arm ${arm.id} used a reasoning model (${n} request(s)): its TTFT is the time to the first answer token and includes thinking, so do not compare it with a non-reasoning model's TTFT.`);
+  }
   const errs = new Map();
   for (const r of measured.filter((x) => !ok(x))) { const k = `${r.arm}: ${r.error?.name ?? 'unknown'}${r.error?.message ? ` (${r.error.message.slice(0, 90)})` : ''}`; errs.set(k, (errs.get(k) ?? 0) + 1); }
   out.push('## Data quality', '');
