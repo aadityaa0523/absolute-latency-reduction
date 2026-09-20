@@ -1,0 +1,21 @@
+﻿Every AI app has the same problem. The model is fast, but the user is far away, and the wait before the first word feels slow. I'm building from India, so I wanted to know which levers really make Amazon Bedrock feel faster, measured, not claimed.
+
+This is Absolute Latency Reduction. It's a small gateway on AWS Lambda in Mumbai, with a benchmark harness and this dashboard.
+
+On the left, I pick a question. On the right, the same question races through seven setups at the same instant. Grey means waiting for the first real token. Blue means text is streaming in.
+
+The first two lanes show the classic mistake. Waiting for the whole answer, versus streaming it. The full answer takes about the same time, but the first word arrives much sooner.
+
+Next, prompt caching, and a response cache. Ask the same question twice, and the repeat comes back from DynamoDB almost instantly, with a badge saying exactly what served it.
+
+Then the adaptive gateway. A rule router sends short questions to a fast model, and long ones to a strong model. If the first choice is slow to answer, it falls back before the first token. Every decision is shown as a trace, so nothing is a black box.
+
+Now, an honest note. Right now Amazon Bedrock is refusing model calls on my new AWS account, pending account verification. The relay detects this by itself and switches the race into demo mode. You can see the banner. These timings are simulated in the browser, and they are labelled that way. They are not measurements.
+
+What is real is the cache audit. This is computed live by the deployed matcher. Six of twelve reworded questions are served from the cache, and zero of twelve look-alike questions are wrongly served. A cache that returns a wrong answer is worse than no cache, so it is built to prefer a miss.
+
+The benchmark harness is ready for real data. It randomises the order, keeps caches separate, reports paired speedups with confidence intervals, and refuses to publish synthetic results.
+
+On AWS, this uses Lambda with response streaming, DynamoDB with TTL, EventBridge to keep it warm, CloudWatch, and CloudFormation. The code, tests, and harness are public on GitHub.
+
+What I learned: measure before you optimise, and never let a demo pretend to be a result. Thank you.

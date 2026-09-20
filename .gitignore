@@ -5,3 +5,8 @@ build/
 results/*
 !results/.gitkeep
 absolute latency reduction.md
+
+video/raw/
+video/*.mp4
+video/*.mp3
+video/*.png

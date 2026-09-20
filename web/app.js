@@ -91,7 +91,7 @@ function renderAudit(ev) {
     h('tbody', {}, rows.map((r) => h('tr', {}, h('td', {}, r.question), h('td', {}, r.baseQuestion), h('td', {}, r.matched ? 'served from cache' : 'goes to the model')))))));
   body.replaceChildren(
     h('p', { class: 'lede' }, `A reworded question should come from the cache; a question that only looks similar must not. Computed live by this relay's matcher (${ev.method}). It prefers a miss over a wrong answer.`),
-    n.hits > 0 ? h('p', { class: 'alert-box', role: 'alert' }, `${n.hits} look-alike question${n.hits > 1 ? 's' : ''} would be served the wrong cached answer.`) : null,
+    ...(n.hits > 0 ? [h('p', { class: 'alert-box', role: 'alert' }, `${n.hits} look-alike question${n.hits > 1 ? 's' : ''} would be served the wrong cached answer.`)] : []),
     h('div', { class: 'stats' },
       h('div', { class: 'stat' }, h('div', { class: 'big' }, `${p.hits}/${p.total}`), h('div', { class: 'lab' }, 'rewordings served from the cache')),
       h('div', { class: 'stat' }, h('div', { class: 'big' }, `${n.hits}/${n.total}`), h('div', { class: 'lab' }, 'look-alike questions wrongly served (must be 0)'))),
