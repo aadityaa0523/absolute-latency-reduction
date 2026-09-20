@@ -74,3 +74,63 @@ export function totalsPhrase(end, reference) {
 }
 
 export const latencyScale =(arms, key) => Math.max(1, ...arms.map((a) => a[key]?.p95 ?? a[key]?.p50 ?? 0));
+
+
+// ---------- demo mode: a local, honestly-labelled simulation ----------
+// No network call reaches the relay or Bedrock. Used when the live model is unavailable (e.g. an account
+// verification hold) so the interaction itself — the thing "Best UI" judges rate — can still be seen working.
+// Every event it yields is shaped exactly like the real relay's NDJSON events, so the same paint() code in
+// app.js renders both paths with no branching, and demo output can never be confused with a live answer
+// because s.done.demo === true is checked before anything is shown as real.
+
+// mulberry32: small, fast, seedable. Deterministic for tests; seeded from Date.now() on the page so replays differ.
+export function seededRng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const DEMO_ANSWERS = {
+  h01: 'The handbook requires at least 75 percent attendance in each course (Clause 1).',
+  h02: 'The late fee is 2 rupees per day for each overdue book (Clause 2).',
+  h03: 'Hostel gates close at 11:30 pm on Friday and Saturday (Clause 3).',
+  h04: 'You have 5 working days, and the fee is 500 rupees per paper (Clause 5).',
+  default: 'Based on the handbook, here is the answer to your question, drawn from the relevant clause.',
+};
+const demoText = (promptId) => DEMO_ANSWERS[promptId] ?? DEMO_ANSWERS.default;
+
+// Per-lane demo profile: roughly what that setup would look like against a real model, kept honest by being
+// visibly slower/faster in the same relative order the real levers would produce, never a specific promised
+// number. `attempt` matters first: only a *repeat* of a response-cache lane is a cache hit — the first ask on
+// that same lane is an ordinary cold call and must not inherit the repeat's near-zero timing.
+function demoProfile(lane, attempt, next) {
+  const jitter = (base, spread) => base + (next() - 0.5) * spread;
+  if (lane.responseCache && lane.repeat && attempt > 1) return { ttft: jitter(6, 3), tokensPerSec: Infinity, cachePoint: false, cacheHit: true };
+  if (lane.stream === false) return { ttft: jitter(2200, 300), tokensPerSec: 45, cachePoint: false };
+  if (lane.promptCache) return { ttft: jitter(180, 40), tokensPerSec: 60, cachePoint: true };
+  if (lane.auto) return { ttft: jitter(160, 60), tokensPerSec: 65, cachePoint: false, auto: true };
+  return { ttft: jitter(650, 150), tokensPerSec: 55, cachePoint: false };
+}
+
+// Async generator of relay-shaped events: {t:'token',text} then {t:'done',...}. `sleep` is injected so tests
+// run instantly; the page passes the real setTimeout-based one.
+export async function* simulateRace(run, { promptId, attempt, next = seededRng(Date.now()), sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+  const p = demoProfile(run.lane, attempt, next);
+  await sleep(p.ttft);
+  const words = demoText(promptId).split(' ');
+  const n = Math.min(words.length, 40);
+  for (let i = 0; i < n; i++) {
+    if (i && p.tokensPerSec !== Infinity) await sleep(1000 / p.tokensPerSec);
+    yield { t: 'token', text: `${words[i]} ` };
+  }
+  const badges = [];
+  if (p.cacheHit) badges.push('served from the response cache (demo)');
+  else if (p.cachePoint) badges.push('prompt cache would apply here (demo)');
+  else if (p.auto) badges.push(`${run.lane.id === 'auto' ? 'fast' : 'strong'} model chosen by the router (demo)`);
+  yield { t: 'done', demo: true, route: p.cacheHit ? 'response-cache' : 'model', model: 'demo', provider: 'demo', badges, usage: { outputTokens: n } };
+}

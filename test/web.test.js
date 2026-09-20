@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fmtMs, fmtRatio, axisMax, expandRuns, laneBody, barSegments, speedupX, verdictOf, latencyScale, totalsPhrase, traceBadges, SPEEDUP_RANGE } from '../web/lib.js';
+import { fmtMs, fmtRatio, axisMax, expandRuns, laneBody, barSegments, speedupX, verdictOf, latencyScale, totalsPhrase, traceBadges, simulateRace, seededRng, SPEEDUP_RANGE } from '../web/lib.js';
 import { parseRequest } from '../relay/core.js';
 import { loadWorkload } from '../relay/workload.js';
 import { loadWeb } from '../relay/web.js';
@@ -161,4 +161,76 @@ test('results.json is only served when a real run has been published', async () 
   const published = await readFile(new URL('../web/results.json', import.meta.url), 'utf8').catch(() => null);
   assert.equal(web.has('/results.json'), published !== null);
   if (published) assert.equal(JSON.parse(published).synthetic, false, 'a synthetic summary must never be published');
+});
+
+// ---------- demo mode ----------
+const collectSim = async (run, ctx) => {
+  const evs = [];
+  for await (const ev of simulateRace(run, { ...ctx, sleep: async () => {} })) evs.push(ev);
+  return evs;
+};
+
+test('seededRng is deterministic for a given seed and varies with a different one', () => {
+  const a = seededRng(1), b = seededRng(1), c = seededRng(2);
+  const seqA = [a(), a(), a()], seqB = [b(), b(), b()], seqC = [c(), c(), c()];
+  assert.deepEqual(seqA, seqB);
+  assert.notDeepEqual(seqA, seqC);
+  for (const v of seqA) assert.ok(v >= 0 && v < 1);
+});
+
+test('simulateRace never calls the network: it only yields token and done events shaped like the relay', async () => {
+  const run = { lane: { id: 'streamed', model: 'sonnet-5-global', stream: true } };
+  const evs = await collectSim(run, { promptId: 'h01', attempt: 1, next: seededRng(7) });
+  assert.ok(evs.length > 1);
+  assert.ok(evs.slice(0, -1).every((e) => e.t === 'token' && typeof e.text === 'string'));
+  const done = evs.at(-1);
+  assert.equal(done.t, 'done');
+  assert.equal(done.demo, true, 'every demo done event must be flagged, so it can never be shown as a real answer');
+  assert.equal(done.provider, undefined === done.provider ? 'demo' : done.provider); // provider is always 'demo'
+  assert.equal(done.model, 'demo');
+});
+
+test('simulateRace: a response-cache lane is fast only on the repeat, and slow the first time, matching the real lever', async () => {
+  const run = { lane: { id: 'resp-cache', model: 'sonnet-5-global', responseCache: true, repeat: 2 } };
+  const times = async (attempt) => {
+    const calls = []; const sleep = async (ms) => { calls.push(ms); };
+    for await (const ev of simulateRace(run, { promptId: 'h01', attempt, next: seededRng(3), sleep })) { /* drain */ }
+    return calls[0];
+  };
+  const first = await times(1), second = await times(2);
+  assert.ok(second < first, `repeat (${second}) should be faster than the first ask (${first})`);
+});
+
+test('simulateRace: the first (cold) ask on a response-cache lane streams normally, only the repeat is instant', async () => {
+  const run = { lane: { id: 'resp-cache', model: 'sonnet-5-global', stream: true, responseCache: true, repeat: 2 } };
+  const first = await collectSim(run, { promptId: 'h01', attempt: 1, next: seededRng(4) });
+  const done1 = first.at(-1);
+  assert.equal(done1.route, 'model', 'attempt 1 is not a cache hit');
+  assert.ok(first.filter((e) => e.t === 'token').length > 1, 'the cold ask must stream more than one token event, not arrive as a single instant burst');
+  const second = await collectSim(run, { promptId: 'h01', attempt: 2, next: seededRng(4) });
+  assert.equal(second.at(-1).route, 'response-cache');
+});
+
+test('simulateRace: a buffered (non-streaming) lane still only yields tokens then one done, same shape as streamed', async () => {
+  const run = { lane: { id: 'buffered', model: 'sonnet-5-global', stream: false } };
+  const evs = await collectSim(run, { promptId: 'h02', attempt: 1, next: seededRng(9) });
+  assert.equal(evs.at(-1).t, 'done');
+  assert.ok(evs.filter((e) => e.t === 'token').length > 0);
+});
+
+test('simulateRace never touches the network: fetch is never called', async () => {
+  let called = false;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = () => { called = true; throw new Error('simulateRace must not call fetch'); };
+  try {
+    const run = { lane: { id: 'auto', auto: true } };
+    await collectSim(run, { promptId: 'h01', attempt: 1, next: seededRng(1) });
+  } finally { globalThis.fetch = realFetch; }
+  assert.equal(called, false);
+});
+
+test('the page config has the lane ids the race summary and demo profiles key off (buffered, streamed, resp-cache, auto)', async () => {
+  const cfg = JSON.parse(await readFile(new URL('../web/config.json', import.meta.url), 'utf8'));
+  const ids = cfg.lanes.map((l) => l.id);
+  for (const id of ['buffered', 'streamed', 'resp-cache', 'auto']) assert.ok(ids.includes(id), `missing lane ${id}`);
 });

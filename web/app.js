@@ -1,9 +1,13 @@
-import { fmtMs, fmtRatio, axisMax, expandRuns, laneBody, barSegments, speedupX, verdictOf, latencyScale, totalsPhrase, traceBadges, SPEEDUP_RANGE } from './lib.js';
+import { fmtMs, fmtRatio, axisMax, expandRuns, laneBody, barSegments, speedupX, verdictOf, latencyScale, totalsPhrase, traceBadges, simulateRace, seededRng, SPEEDUP_RANGE } from './lib.js';
 
 const $ = (sel) => document.querySelector(sel);
 const SVG_TAGS = new Set(['svg', 'g', 'line', 'rect', 'circle', 'path', 'text']);
 const rid = (n = 8) => Array.from(crypto.getRandomValues(new Uint8Array(n)), (b) => 'abcdefghjkmnpqrstuvwxyz23456789'[b % 31]).join('');
 const session = rid(8);
+// Demo mode: races run entirely in the browser, no network call, clearly labelled. Off by default; the page
+// switches it on itself only if the live relay's health check fails, so a real, working relay is never hidden
+// behind a demo. next() is reseeded per race so repeated clicks do not always show the identical numbers.
+let demoMode = false, demoRng = seededRng(Date.now());
 
 // Builds DOM with textContent only, so nothing from the network is ever parsed as HTML.
 function h(tag, attrs = {}, ...kids) {
@@ -30,12 +34,24 @@ async function boot() {
     return;
   }
   health = await fetchJson('/health').catch(() => null);
+  // Default demo mode on only when the relay itself is unreachable or not talking to a real model, so a working
+  // live relay is always shown first, and a broken one does not force every visitor into a dead-end error state.
+  setDemoMode(!health || health.provider !== 'bedrock');
   paintStatus();
   // Open connections and wake any cold container before the first race, so the first lane is not penalised for setup.
   for (const u of Object.values(config.endpoints)) fetch(new URL('health', new URL(u, location.href)).href, { cache: 'no-store' }).catch(() => {});
   buildPromptPicker(prompts);
   $('#controls').addEventListener('submit', (e) => { e.preventDefault(); startRace(); });
+  $('#demo-toggle').addEventListener('change', (e) => setDemoMode(e.target.checked));
   renderResults(await fetchJson('/results.json').catch(() => null));
+}
+
+function setDemoMode(on) {
+  demoMode = on;
+  demoRng = seededRng(Date.now());
+  const t = $('#demo-toggle'), b = $('#demo-banner');
+  if (t) t.checked = on;
+  if (b) b.hidden = !on;
 }
 
 function paintStatus() {
@@ -73,27 +89,43 @@ function onEvent(s, ev, now) {
   else if (ev.t === 'error') { s.error = { message: errText(ev) }; s.end = now; }
 }
 
+// Runs one lane over the network to the real relay. Only called when demo mode is off.
+async function runOneLive(run, ctx) {
+  const s = run.s;
+  const url = new URL(config.endpoints[run.lane.endpoint], location.href).href;
+  const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(laneBody(run.lane, ctx)), cache: 'no-store' });
+  const reader = res.body.getReader(), dec = new TextDecoder();
+  let buf = '';
+  const take = (line) => { try { onEvent(s, JSON.parse(line), performance.now() - s.t0); } catch { /* not an event line */ } };
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (value) {
+      s.ttfb ??= performance.now() - s.t0;
+      buf += dec.decode(value, { stream: true });
+      for (let i = buf.indexOf('\n'); i >= 0; i = buf.indexOf('\n')) { const line = buf.slice(0, i); buf = buf.slice(i + 1); if (line) take(line); }
+    }
+    if (done) break;
+  }
+  if (buf.trim()) take(buf);
+  if (!s.done && !s.error) s.error = { message: `No answer received (HTTP ${res.status})` };
+}
+
+// Runs one lane entirely in the browser: no fetch, no relay, no Bedrock. Used only when demo mode is on, so the
+// race interaction can be shown working even while the live model is unavailable. simulateRace's events are
+// shaped exactly like the real relay's NDJSON events, so onEvent needs no branching for this path, and every
+// done event it yields carries demo: true so it is never rendered as if it were a real answer.
+async function runOneDemo(run, ctx) {
+  const s = run.s;
+  for await (const ev of simulateRace(run, { promptId: ctx.promptId, attempt: run.attempt, next: demoRng })) onEvent(s, ev, performance.now() - s.t0);
+}
+
 async function runOne(run, ctx) {
   const s = run.s;
   s.status = 'running';
   s.t0 = performance.now();
   try {
-    const url = new URL(config.endpoints[run.lane.endpoint], location.href).href;
-    const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(laneBody(run.lane, ctx)), cache: 'no-store' });
-    const reader = res.body.getReader(), dec = new TextDecoder();
-    let buf = '';
-    const take = (line) => { try { onEvent(s, JSON.parse(line), performance.now() - s.t0); } catch { /* not an event line */ } };
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (value) {
-        s.ttfb ??= performance.now() - s.t0;
-        buf += dec.decode(value, { stream: true });
-        for (let i = buf.indexOf('\n'); i >= 0; i = buf.indexOf('\n')) { const line = buf.slice(0, i); buf = buf.slice(i + 1); if (line) take(line); }
-      }
-      if (done) break;
-    }
-    if (buf.trim()) take(buf);
-    if (!s.done && !s.error) s.error = { message: `No answer received (HTTP ${res.status})` };
+    if (demoMode) await runOneDemo(run, ctx);
+    else await runOneLive(run, ctx);
   } catch (e) {
     s.error = { message: `Network error: ${e.message}` };
   }
@@ -135,10 +167,15 @@ function paint(run, axis) {
     if (s.error) d.err.textContent = s.error.message;
     if (!d.badges.childElementCount && s.done) {
       const u = s.done.usage ?? {};
-      for (const b of traceBadges(s.done)) d.badges.append(h('span', { class: 'badge' }, b.text));
-      if (u.cacheReadInputTokens > 0) d.badges.append(h('span', { class: 'badge' }, `prompt cache read ${u.cacheReadInputTokens} tokens`));
-      if (u.cacheWriteInputTokens > 0) d.badges.append(h('span', { class: 'badge' }, `prompt cache wrote ${u.cacheWriteInputTokens} tokens`));
-      if (s.done.provider === 'mock') d.badges.append(h('span', { class: 'badge mock' }, 'mock model'));
+      if (s.done.demo) {
+        d.badges.append(h('span', { class: 'badge mock' }, 'DEMO: simulated in your browser, not a real model'));
+        for (const t of s.done.badges ?? []) d.badges.append(h('span', { class: 'badge' }, t));
+      } else {
+        for (const b of traceBadges(s.done)) d.badges.append(h('span', { class: 'badge' }, b.text));
+        if (u.cacheReadInputTokens > 0) d.badges.append(h('span', { class: 'badge' }, `prompt cache read ${u.cacheReadInputTokens} tokens`));
+        if (u.cacheWriteInputTokens > 0) d.badges.append(h('span', { class: 'badge' }, `prompt cache wrote ${u.cacheWriteInputTokens} tokens`));
+        if (s.done.provider === 'mock') d.badges.append(h('span', { class: 'badge mock' }, 'mock model'));
+      }
     }
   }
 }
@@ -195,6 +232,7 @@ function raceSummary(runs) {
   if (ok(auto)) parts.push(`The adaptive gateway showed its first token in ${fmtMs(auto.s.ttft)} and finished in ${fmtMs(auto.s.end)}: ${traceBadges(auto.s.done).map((b) => b.text).join('; ') || 'served by the model'}.`);
   const failed = runs.filter((r) => r.s.status === 'error').length;
   if (failed) parts.push(`${failed} lane${failed > 1 ? 's' : ''} failed; the reason is shown on each.`);
+  if (demoMode) parts.unshift('DEMO MODE: every lane above ran locally in your browser with simulated timings, not a real call to Bedrock.');
   parts.push('One race is a single sample. The statistics are in the benchmark results.');
   $('#race-summary').textContent = parts.join(' ');
 }

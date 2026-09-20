@@ -32,6 +32,10 @@
         <select id="prompt" name="prompt"></select>
         <button type="submit" id="run">Run the race</button>
       </form>
+      <p class="demo-row">
+        <label class="demo-check"><input type="checkbox" id="demo-toggle"> Demo mode: simulate in the browser instead of calling the live model</label>
+      </p>
+      <p id="demo-banner" class="hint demo-banner" hidden>DEMO MODE is on: the race below runs entirely in your browser with simulated timings, not a real call to Bedrock. Turn it off to use the live relay.</p>
       <p id="hint" class="hint"></p>
 
       <div id="lanes" class="lanes"></div>
