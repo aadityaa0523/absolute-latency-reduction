@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
   <meta name="description" content="A latency lab for Amazon Bedrock: race the same question through different setups and read the measured results.">
   <title>Absolute Latency Reduction</title>
   <link rel="stylesheet" href="/styles.css">
@@ -11,45 +12,62 @@
   <a class="skip" href="#race">Skip to the live race</a>
 
   <header class="top">
-    <div class="wrap top-inner">
-      <div>
-        <h1>Absolute Latency Reduction</h1>
-        <p class="tag">Which levers actually make a remote AI model feel faster from India? Measured, not claimed.</p>
+    <div class="wrap top-row">
+      <div class="brand">
+        <span class="mark" aria-hidden="true">ALR</span>
+        <div>
+          <h1>Absolute Latency Reduction</h1>
+          <p class="tag">Which levers actually make a remote AI model feel faster from India? Measured, not claimed.</p>
+        </div>
       </div>
-      <p id="status" class="status" role="status">Checking the relay&hellip;</p>
+      <p id="status" class="status" role="status"><span class="dot"></span><span id="status-text">Checking the relay&hellip;</span></p>
     </div>
+    <nav class="wrap tabs" aria-label="Sections">
+      <a href="#race">Live race</a>
+      <a href="#results">Benchmark results</a>
+      <a href="#audit">Cache audit</a>
+      <a href="#method">Method</a>
+    </nav>
   </header>
 
   <div id="banner" class="banner" role="alert" hidden></div>
 
   <main class="wrap">
-    <section id="race" aria-labelledby="race-h">
-      <h2 id="race-h">Live race</h2>
-      <p class="lede">The same question goes out through different setups at the same instant. Each bar is grey while it waits for the first real token from the model, then blue while text streams in.</p>
-
-      <form id="controls" class="controls">
-        <label for="prompt">Question</label>
-        <select id="prompt" name="prompt"></select>
-        <button type="submit" id="run">Run the race</button>
-      </form>
-      <p class="demo-row">
-        <label class="demo-check"><input type="checkbox" id="demo-toggle"> Demo mode: simulate in the browser instead of calling the live model</label>
-      </p>
-      <p id="demo-banner" class="hint demo-banner" hidden>DEMO MODE is on: the race below runs entirely in your browser with simulated timings, not a real call to Bedrock. Turn it off to use the live relay.</p>
-      <p id="hint" class="hint"></p>
-
-      <div id="lanes" class="lanes"></div>
-      <div id="axis" class="lane axis" aria-hidden="true" hidden>
-        <span></span>
-        <span class="axis-scale"><span>0</span><span id="axis-max"></span></span>
-        <span></span>
+    <section id="race" class="grid race" aria-labelledby="race-h">
+      <div class="panel query">
+        <h2 id="race-h">Query</h2>
+        <p class="lede">The same question goes out through different setups at the same instant.</p>
+        <form id="controls" class="controls">
+          <label for="prompt">Question</label>
+          <select id="prompt" name="prompt"></select>
+          <button type="submit" id="run">Run the race</button>
+        </form>
+        <label class="demo-check"><input type="checkbox" id="demo-toggle"> Demo mode: simulate in the browser</label>
+        <p id="demo-banner" class="demo-banner" hidden>DEMO MODE: the race runs entirely in your browser with simulated timings, not a real call to Bedrock.</p>
+        <p id="hint" class="hint"></p>
       </div>
-      <p id="race-summary" class="race-summary" role="status"></p>
+
+      <div class="panel waterfall">
+        <h2>Waterfall</h2>
+        <p class="legend"><span class="key wait"></span> waiting for the first token <span class="key stream"></span> streaming</p>
+        <div id="lanes" class="lanes"></div>
+        <div id="axis" class="lane axis" aria-hidden="true" hidden>
+          <span></span>
+          <span class="axis-scale"><span>0</span><span id="axis-max"></span></span>
+          <span></span>
+        </div>
+        <p id="race-summary" class="race-summary" role="status"></p>
+      </div>
     </section>
 
     <section id="results" aria-labelledby="res-h">
       <h2 id="res-h">Benchmark results</h2>
       <div id="results-body"><p class="muted">Loading&hellip;</p></div>
+    </section>
+
+    <section id="audit" aria-labelledby="audit-h">
+      <h2 id="audit-h">Cache audit</h2>
+      <div id="audit-body"><p class="muted">Loading&hellip;</p></div>
     </section>
 
     <section id="method" aria-labelledby="method-h">
@@ -65,7 +83,7 @@
   </main>
 
   <footer class="wrap foot">
-    <p>Built for the WeMakeDevs x AWS First Commit hackathon on Lambda, DynamoDB, CloudWatch and Amazon Bedrock. Code, tests and the benchmark harness are in the public repository. AI tools used: Claude Code.</p>
+    <p>Built for the WeMakeDevs x AWS First Commit hackathon on Lambda, DynamoDB, EventBridge, CloudWatch and Amazon Bedrock. Code, tests and the benchmark harness are in the <a href="https://github.com/aadityaa0523/absolute-latency-reduction">public repository</a>. AI tools used: Claude Code.</p>
   </footer>
 
   <script type="module" src="/app.js"></script>

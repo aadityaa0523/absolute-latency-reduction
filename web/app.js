@@ -23,7 +23,7 @@ const fetchJson = async (path) => {
   return r.json();
 };
 
-let config, health, raceActive = false;
+let config, health, probe, raceActive = false;
 
 async function boot() {
   let prompts;
@@ -34,10 +34,13 @@ async function boot() {
     return;
   }
   health = await fetchJson('/health').catch(() => null);
-  // Default demo mode on only when the relay itself is unreachable or not talking to a real model, so a working
-  // live relay is always shown first, and a broken one does not force every visitor into a dead-end error state.
-  setDemoMode(!health || health.provider !== 'bedrock');
+  // Ask the relay whether the model will actually answer. /health only says the relay is up, and Bedrock can
+  // refuse every call while the relay looks healthy, so demo mode turns on only when the probe fails.
+  probe = health?.provider === 'bedrock' ? await fetchJson('/health/model').catch(() => ({ ok: false, name: 'Unreachable', message: 'model check failed' })) : null;
+  setDemoMode(!health || health.provider !== 'bedrock' || !probe?.ok);
   paintStatus();
+  watchSections();
+  renderAudit(await fetchJson('/semantic-eval.json').catch(() => null));
   // Open connections and wake any cold container before the first race, so the first lane is not penalised for setup.
   for (const u of Object.values(config.endpoints)) fetch(new URL('health', new URL(u, location.href)).href, { cache: 'no-store' }).catch(() => {});
   buildPromptPicker(prompts);
@@ -55,14 +58,44 @@ function setDemoMode(on) {
 }
 
 function paintStatus() {
-  const s = $('#status'), b = $('#banner');
-  if (!health) { s.textContent = 'Relay not reachable'; s.classList.add('warn'); return; }
-  s.replaceChildren(h('span', { class: 'dot' }), `Relay live in ${health.region} (${health.provider === 'bedrock' ? 'Amazon Bedrock' : 'mock model'})`);
-  s.classList.toggle('warn', health.provider !== 'bedrock');
-  if (health.provider !== 'bedrock') {
+  const s = $('#status'), t = $('#status-text'), b = $('#banner');
+  if (!health) { t.textContent = 'Relay not reachable'; s.classList.add('bad'); return; }
+  const mock = health.provider !== 'bedrock', refused = !mock && !probe?.ok;
+  t.textContent = mock ? `Relay in ${health.region} · mock model` : refused ? `Relay live in ${health.region} · model not answering` : `Relay live in ${health.region} · Amazon Bedrock`;
+  s.classList.toggle('warn', mock || refused);
+  if (mock) {
     b.hidden = false;
     b.textContent = 'SYNTHETIC: this relay is using a mock model. Timings below are a test of the page, not measurements of AWS or Amazon Bedrock.';
+  } else if (refused) {
+    b.hidden = false;
+    b.classList.add('info');
+    b.textContent = `The relay is running on AWS Lambda, but Amazon Bedrock is refusing model calls on this account (${probe.name}: ${probe.message}). The race below is a labelled browser demo, not a measurement.`;
   }
+}
+
+function watchSections() {
+  const links = [...document.querySelectorAll('.tabs a')];
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) if (e.isIntersecting) links.forEach((a) => a.classList.toggle('on', a.getAttribute('href') === `#${e.target.id}`));
+  }, { rootMargin: '-30% 0px -60% 0px' });
+  for (const a of links) { const el = document.querySelector(a.getAttribute('href')); if (el) io.observe(el); }
+}
+
+// Live check of the deployed paraphrase matcher: computed by the relay from its own code and labelled question pairs.
+function renderAudit(ev) {
+  const body = $('#audit-body');
+  if (!ev) { body.replaceChildren(h('p', { class: 'muted' }, 'The cache check is unavailable from this relay.')); return; }
+  const { paraphrase: p, nearmiss: n } = ev;
+  const list = (title, rows) => h('details', {}, h('summary', {}, title), h('div', { class: 'card scroll' }, h('table', {},
+    h('thead', {}, h('tr', {}, h('th', {}, 'Question'), h('th', {}, 'Compared with'), h('th', {}, 'Cache'))),
+    h('tbody', {}, rows.map((r) => h('tr', {}, h('td', {}, r.question), h('td', {}, r.baseQuestion), h('td', {}, r.matched ? 'served from cache' : 'goes to the model')))))));
+  body.replaceChildren(
+    h('p', { class: 'lede' }, `A reworded question should come from the cache; a question that only looks similar must not. Computed live by this relay's matcher (${ev.method}). It prefers a miss over a wrong answer.`),
+    n.hits > 0 ? h('p', { class: 'alert-box', role: 'alert' }, `${n.hits} look-alike question${n.hits > 1 ? 's' : ''} would be served the wrong cached answer.`) : null,
+    h('div', { class: 'stats' },
+      h('div', { class: 'stat' }, h('div', { class: 'big' }, `${p.hits}/${p.total}`), h('div', { class: 'lab' }, 'rewordings served from the cache')),
+      h('div', { class: 'stat' }, h('div', { class: 'big' }, `${n.hits}/${n.total}`), h('div', { class: 'lab' }, 'look-alike questions wrongly served (must be 0)'))),
+    list('Show the rewordings', p.items), list('Show the look-alikes', n.items));
 }
 
 function buildPromptPicker(prompts) {
