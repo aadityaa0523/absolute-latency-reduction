@@ -20,7 +20,7 @@ export function validateConfig(cfg) {
     if (ids.has(a.id)) problems.push(`duplicate arm id ${a.id}`);
     ids.add(a.id);
     if (!cfg.endpoints?.[a.endpoint]) problems.push(`arm ${a.id}: unknown endpoint "${a.endpoint}"`);
-    if (a.kind !== 'ping' && !Object.hasOwn(MODELS, a.model)) problems.push(`arm ${a.id}: unknown model "${a.model}"`);
+    if (a.kind !== 'ping' && !a.auto && !Object.hasOwn(MODELS, a.model)) problems.push(`arm ${a.id}: unknown model "${a.model}"`);
     if (a.salt !== undefined && !['nonce', 'run'].includes(a.salt)) problems.push(`arm ${a.id}: salt must be "nonce" or "run"`);
   }
   for (const c of cfg.comparisons ?? []) {
@@ -36,6 +36,10 @@ export async function runBenchmark({ config, workload, rounds, warmup, seed, van
   const next = rng(seed);
   const prompts = [...workload.prompts.values()].filter((p) => strata.includes(p.stratum));
   if (!prompts.length) throw new Error(`no prompts in strata ${strata.join(',')}`);
+  if (config.arms.some((a) => a.seed)) {
+    const orphan = prompts.find((p) => p.base && !workload.prompts.has(p.base));
+    if (orphan) throw new Error(`prompt ${orphan.id} rewords ${orphan.base}, which is not in the workload, so it cannot be seeded`);
+  }
   const pingArms = config.arms.filter((a) => a.kind === 'ping'), modelArms = config.arms.filter((a) => a.kind !== 'ping');
 
   await mkdir(outDir, { recursive: true });
@@ -59,16 +63,34 @@ export async function runBenchmark({ config, workload, rounds, warmup, seed, van
     }
     for (const prompt of shuffled(prompts, next)) {
       for (const arm of shuffled(modelArms, next)) {
-        for (let attempt = 1; attempt <= (arm.repeat ?? 1); attempt++) {
-          const body = {
-            promptId: prompt.id, model: arm.model, stream: arm.stream ?? true, responseCache: !!arm.responseCache,
-            promptCache: !!arm.promptCache, maxTokens: arm.maxTokens ?? 200, namespace: safe(`${runId}-r${round}`).slice(0, 40),
+        // One cache namespace per round, arm and measured question: an arm's cached answers can never serve another arm,
+        // and a paraphrase's seed request cannot turn the base question's own measurement into a cache hit.
+        // Keep the tail (arm and question ids) if it must be shortened, so distinct measurements never share a namespace.
+        const namespace = safe(`${runId}-${round}-${arm.id}-${prompt.id}`).slice(-40);
+        const bodyFor = (p) => {
+          const common = {
+            promptId: p.id, stream: arm.stream ?? true, maxTokens: arm.maxTokens ?? 200, namespace,
             // Cold prefix by default: a fresh salt per request, so no arm can benefit from a cache by accident.
             // Only an arm that sets salt "run" shares one prefix across the run, which is how prompt caching is tested.
             prefixSalt: arm.salt === 'run' ? safe(`${runId}-${arm.id}`).slice(0, 40) : safe(`n${++nonce}-${runId}`).slice(0, 40),
           };
-          const r = await callImpl({ url: config.endpoints[arm.endpoint], body, fresh: !!arm.fresh });
-          await record({ run: runId, round, warmup: isWarmup, promptId: prompt.id, stratum: prompt.stratum, arm: arm.id, attempt, ...r });
+          return arm.auto
+            ? { ...common, auto: true, responseCache: arm.responseCache ?? true, semanticCache: arm.semanticCache ?? true, fallback: arm.fallback ?? true, budgetMs: arm.budgetMs }
+            : { ...common, model: arm.model, responseCache: !!arm.responseCache, promptCache: !!arm.promptCache };
+        };
+        // A paraphrase or near-miss is only meaningful after the question it rewords has been asked, so seed it first.
+        // The seed request is recorded (seed: true) but excluded from every statistic.
+        if (arm.seed && prompt.base) {
+          const seedPrompt = workload.prompts.get(prompt.base);
+          const r = await callImpl({ url: config.endpoints[arm.endpoint], body: bodyFor(seedPrompt), fresh: !!arm.fresh });
+          await record({ run: runId, round, warmup: isWarmup, seed: true, promptId: seedPrompt.id, stratum: seedPrompt.stratum, arm: arm.id, attempt: 0, ...r, text: undefined });
+          await sleep(pauseMs);
+        }
+        for (let attempt = 1; attempt <= (arm.repeat ?? 1); attempt++) {
+          const r = await callImpl({ url: config.endpoints[arm.endpoint], body: bodyFor(prompt), fresh: !!arm.fresh });
+          // Keyed correctness: a handbook question has a known answer, so a fast answer is only good if it is also right.
+          const correct = prompt.expect && r.ok ? prompt.expect.every((e) => new RegExp(e, 'i').test(r.text)) : null;
+          await record({ run: runId, round, warmup: isWarmup, promptId: prompt.id, stratum: prompt.stratum, arm: arm.id, attempt, ...r, correct, text: r.text?.slice(0, 600) });
           await sleep(pauseMs);
         }
       }

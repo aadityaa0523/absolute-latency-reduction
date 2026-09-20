@@ -26,6 +26,10 @@ export function expandRuns(config) {
 // keeps one prefix for the whole page visit, which is what lets Bedrock's prompt cache be seen working.
 // The response-cache namespace is the race id, so every race starts cold and the repeat is the first hit.
 export function laneBody(lane, { promptId, raceId, session }) {
+  // The adaptive lane remembers within a page visit, so asking a question and then a reworded version shows the paraphrase cache.
+  if (lane.auto) {
+    return { promptId, auto: true, maxTokens: lane.maxTokens ?? 200, namespace: safe(`s-${session}`), prefixSalt: safe(`s-${session}`), ...(lane.budgetMs ? { budgetMs: lane.budgetMs } : {}) };
+  }
   return {
     promptId, model: lane.model, stream: lane.stream ?? true, responseCache: !!lane.responseCache, promptCache: !!lane.promptCache,
     maxTokens: lane.maxTokens ?? 200, namespace: safe(raceId),
@@ -50,6 +54,17 @@ export function speedupX(v, { min, max } = SPEEDUP_RANGE) {
 
 // The interval has to exclude 1 for the page to call a difference real.
 export const verdictOf = (c) => (c.lo > 1 ? 'faster' : c.hi < 1 ? 'slower' : 'unclear');
+
+// Plain-language reasons an answer was served the way it was, taken from the relay's own trace.
+export function traceBadges(done) {
+  const t = done?.trace, out = [];
+  if (!t) return done?.route === 'response-cache' ? [{ text: 'served from the response cache' }] : out;
+  if (t.source === 'exact') out.push({ text: 'exact cache hit' });
+  else if (t.source === 'semantic') out.push({ text: `paraphrase cache hit (same question as: "${t.matched}")` });
+  else if (t.source === 'fallback') out.push({ text: `fallback model answered: the strong model was too slow (${t.fallback?.reason ?? 'budget'})` });
+  else if (t.mode === 'auto') out.push({ text: `${t.tier} model: ${t.reasons?.[0] ?? 'routed'}` });
+  return out;
+}
 
 // How the total time of two setups compares, in words that are computed, never assumed.
 export function totalsPhrase(end, reference) {

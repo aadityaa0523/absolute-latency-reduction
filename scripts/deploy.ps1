@@ -22,6 +22,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 & $aws s3 cp build/relay.zip "s3://$bucket/$key" @common
 
+# The fast tier must be a model this Region can actually reach: Nova Lite is in-Region in us-east-1 and eu-north-1,
+# and only available through the APAC geographic profile from Mumbai.
+$fast = switch ($Region) { 'us-east-1' { 'nova-lite-inregion' } 'eu-north-1' { 'nova-lite-inregion' } default { 'nova-lite-apac' } }
 & $aws cloudformation deploy --stack-name alr-relay --template-file template.yaml --capabilities CAPABILITY_IAM @common `
-  --parameter-overrides "CodeBucket=$bucket" "CodeKey=$key" "ReservedConcurrency=$ReservedConcurrency"
+  --parameter-overrides "CodeBucket=$bucket" "CodeKey=$key" "ReservedConcurrency=$ReservedConcurrency" "TierFast=$fast"
 & $aws cloudformation describe-stacks --stack-name alr-relay @common --query "Stacks[0].Outputs[?OutputKey=='RelayUrl'].OutputValue" --output text

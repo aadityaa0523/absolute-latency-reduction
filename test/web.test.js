@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fmtMs, fmtRatio, axisMax, expandRuns, laneBody, barSegments, speedupX, verdictOf, latencyScale, totalsPhrase, SPEEDUP_RANGE } from '../web/lib.js';
+import { fmtMs, fmtRatio, axisMax, expandRuns, laneBody, barSegments, speedupX, verdictOf, latencyScale, totalsPhrase, traceBadges, SPEEDUP_RANGE } from '../web/lib.js';
 import { parseRequest } from '../relay/core.js';
 import { loadWorkload } from '../relay/workload.js';
 import { loadWeb } from '../relay/web.js';
@@ -84,6 +84,27 @@ test('a verdict needs the interval to exclude 1', () => {
   assert.equal(verdictOf({ lo: 1.2, hi: 1.9 }), 'faster');
   assert.equal(verdictOf({ lo: 0.4, hi: 0.8 }), 'slower');
   assert.equal(verdictOf({ lo: 0.9, hi: 1.4 }), 'unclear');
+});
+
+test('the adaptive lane sends an auto request that shares one namespace for the whole visit', () => {
+  const lane = { id: 'auto', auto: true };
+  const a = laneBody(lane, { promptId: 'h01', raceId: 'r1', session: 'abc' }), b = laneBody(lane, { promptId: 'p01', raceId: 'r2', session: 'abc' });
+  assert.equal(a.auto, true);
+  assert.equal(a.namespace, b.namespace, 'a reworded question must find the original in the same namespace');
+  assert.notEqual(a.namespace, laneBody(lane, { promptId: 'h01', raceId: 'r1', session: 'other' }).namespace);
+  assert.ok(parseRequest(JSON.stringify(a), workload).ok);
+  assert.equal(a.model, undefined);
+});
+
+test('trace badges describe why an answer was served the way it was', () => {
+  const t = (trace) => traceBadges({ trace }).map((b) => b.text);
+  assert.deepEqual(t({ mode: 'auto', source: 'exact' }), ['exact cache hit']);
+  assert.match(t({ mode: 'auto', source: 'semantic', matched: 'What is X?' })[0], /paraphrase cache hit.*What is X\?/);
+  assert.match(t({ mode: 'auto', source: 'fallback', fallback: { reason: 'budget' } })[0], /fallback model answered.*budget/);
+  assert.deepEqual(t({ mode: 'auto', source: 'primary', tier: 'fast', reasons: ['short factual lookup'] }), ['fast model: short factual lookup']);
+  assert.deepEqual(t({ mode: 'manual', source: 'primary' }), []);
+  assert.deepEqual(traceBadges({ route: 'response-cache' }).map((b) => b.text), ['served from the response cache']);
+  assert.deepEqual(traceBadges(null), []);
 });
 
 test('total-time wording is computed from the numbers', () => {

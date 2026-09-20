@@ -1,5 +1,5 @@
 {
-  "_comment": "Copy to bench/arms.json and replace the three URLs with the RelayUrl output of each regional stack. Every latency lever is a separate arm so each comparison changes exactly one thing. Region arms use Nova Lite because it is in-Region in us-east-1 and eu-north-1 and is not a reasoning model, so its TTFT is not polluted by thinking time; Mumbai only has the APAC profile for it. Sonnet 5 runs with thinking disabled (set in relay/models.js). gpt-oss-20b is in-Region in all three Regions but is a reasoning model, so it is included for information and the report flags it.",
+  "_comment": "Copy to bench/arms.json and replace the three URLs with the RelayUrl output of each regional stack. Run with --strata short,handbook,long,paraphrase,nearmiss. Every lever is a separate arm so each comparison changes exactly one thing. Part 1 (region, streaming, routing profile) uses Nova Lite: it is in-Region in us-east-1 and eu-north-1 and is not a reasoning model, so its TTFT is not polluted by thinking time; Mumbai only has the APAC profile for it. Part 2 (the gateway ladder) runs in Mumbai and starts from the naive baseline of always calling the strong model. Sonnet 5 runs with thinking disabled (set in relay/models.js). Arms with seed:true ask the reworded question's base question first, unmeasured, so a paraphrase can hit the cache.",
   "endpoints": {
     "virginia": "https://REPLACE.lambda-url.us-east-1.on.aws/",
     "stockholm": "https://REPLACE.lambda-url.eu-north-1.on.aws/",
@@ -12,10 +12,13 @@
     { "id": "eu-streamed", "endpoint": "stockholm", "model": "nova-lite-inregion", "stream": true },
     { "id": "mum-streamed", "endpoint": "mumbai", "model": "nova-lite-apac", "stream": true },
     { "id": "mum-prompt-cache", "endpoint": "mumbai", "model": "nova-lite-apac", "stream": true, "promptCache": true, "salt": "run" },
-    { "id": "mum-resp-cache", "endpoint": "mumbai", "model": "nova-lite-apac", "stream": true, "responseCache": true, "repeat": 2 },
 
     { "id": "mum-sonnet", "endpoint": "mumbai", "model": "sonnet-5-global", "stream": true },
     { "id": "mum-sonnet-cache", "endpoint": "mumbai", "model": "sonnet-5-global", "stream": true, "promptCache": true, "salt": "run" },
+    { "id": "mum-router", "endpoint": "mumbai", "auto": true, "responseCache": false, "semanticCache": false, "fallback": false },
+    { "id": "mum-exact", "endpoint": "mumbai", "auto": true, "semanticCache": false, "fallback": false, "repeat": 2 },
+    { "id": "mum-gateway", "endpoint": "mumbai", "auto": true, "seed": true, "salt": "run" },
+    { "id": "mum-fallback", "endpoint": "mumbai", "auto": true, "responseCache": false, "semanticCache": false, "fallback": true, "budgetMs": 800 },
     { "id": "mum-gptoss", "endpoint": "mumbai", "model": "gpt-oss-20b-inregion", "stream": true },
 
     { "id": "ping-virginia", "kind": "ping", "endpoint": "virginia", "fresh": true },
@@ -31,6 +34,11 @@
     { "name": "Region: Virginia to Mumbai (APAC profile)", "a": "far-streamed", "b": "mum-streamed" },
     { "name": "Prompt cache, Nova Lite (long prefix)", "a": "mum-streamed", "b": "mum-prompt-cache", "strata": ["handbook", "long"] },
     { "name": "Prompt cache, Sonnet 5 (long prefix)", "a": "mum-sonnet", "b": "mum-sonnet-cache", "strata": ["handbook", "long"] },
-    { "name": "Response cache hit", "a": "mum-streamed", "b": "mum-resp-cache", "bAttempt": 2 }
+
+    { "name": "Gateway 1: route lookups to the fast model", "a": "mum-sonnet", "b": "mum-router", "strata": ["handbook", "long"] },
+    { "name": "Gateway 2: exact cache hit", "a": "mum-router", "b": "mum-exact", "bAttempt": 2, "strata": ["handbook"] },
+    { "name": "Gateway 3: paraphrase cache", "a": "mum-router", "b": "mum-gateway", "strata": ["paraphrase"] },
+    { "name": "Gateway 4: fallback before first token (long questions)", "a": "mum-router", "b": "mum-fallback", "strata": ["long"] },
+    { "name": "Whole gateway versus always calling the strong model", "a": "mum-sonnet", "b": "mum-gateway", "strata": ["handbook", "paraphrase"] }
   ]
 }

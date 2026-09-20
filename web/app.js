@@ -1,4 +1,4 @@
-import { fmtMs, fmtRatio, axisMax, expandRuns, laneBody, barSegments, speedupX, verdictOf, latencyScale, totalsPhrase, SPEEDUP_RANGE } from './lib.js';
+import { fmtMs, fmtRatio, axisMax, expandRuns, laneBody, barSegments, speedupX, verdictOf, latencyScale, totalsPhrase, traceBadges, SPEEDUP_RANGE } from './lib.js';
 
 const $ = (sel) => document.querySelector(sel);
 const SVG_TAGS = new Set(['svg', 'g', 'line', 'rect', 'circle', 'path', 'text']);
@@ -31,6 +31,8 @@ async function boot() {
   }
   health = await fetchJson('/health').catch(() => null);
   paintStatus();
+  // Open connections and wake any cold container before the first race, so the first lane is not penalised for setup.
+  for (const u of Object.values(config.endpoints)) fetch(new URL('health', new URL(u, location.href)).href, { cache: 'no-store' }).catch(() => {});
   buildPromptPicker(prompts);
   $('#controls').addEventListener('submit', (e) => { e.preventDefault(); startRace(); });
   renderResults(await fetchJson('/results.json').catch(() => null));
@@ -48,7 +50,10 @@ function paintStatus() {
 }
 
 function buildPromptPicker(prompts) {
-  const groups = { short: 'General questions (short prompt)', handbook: 'About the handbook (long stable prefix)', long: 'Long answers' };
+  const groups = {
+    short: 'General questions (short prompt)', handbook: 'About the handbook (long stable prefix)', long: 'Long answers',
+    paraphrase: 'Reworded questions (ask the original first, then one of these)', nearmiss: 'Look similar but differ (must not be served from the cache)',
+  };
   const sel = $('#prompt');
   for (const [stratum, label] of Object.entries(groups)) {
     const items = prompts.filter((p) => p.stratum === stratum);
@@ -101,7 +106,7 @@ function laneRow(run) {
   const nums = Object.fromEntries([['ttft', 'First token'], ['done', 'Done'], ['tps', 'Speed']].map(([k, label]) => [k, h('span', { class: 'v' }, 'n/a')]));
   const track = h('div', { class: 'track', role: 'img', 'aria-label': `${run.label}: waiting to start` }, wait, stream);
   const badges = h('span', { class: 'badges' }), text = h('p', { class: 'text', 'aria-hidden': 'true' }), err = h('p', { class: 'err', role: 'alert', hidden: true });
-  const sub = `${run.lane.model} · ${run.lane.endpoint === 'here' ? (health?.region ?? 'this relay') : run.lane.endpoint}`;
+  const sub = `${run.lane.auto ? 'automatic model choice' : run.lane.model} · ${run.lane.endpoint === 'here' ? (health?.region ?? 'this relay') : run.lane.endpoint}`;
   const el = h('div', { class: 'lane' },
     h('div', { class: 'name' }, run.label, h('span', { class: 'sub' }, sub)),
     track,
@@ -130,7 +135,7 @@ function paint(run, axis) {
     if (s.error) d.err.textContent = s.error.message;
     if (!d.badges.childElementCount && s.done) {
       const u = s.done.usage ?? {};
-      if (s.done.route === 'response-cache') d.badges.append(h('span', { class: 'badge' }, 'served from the response cache'));
+      for (const b of traceBadges(s.done)) d.badges.append(h('span', { class: 'badge' }, b.text));
       if (u.cacheReadInputTokens > 0) d.badges.append(h('span', { class: 'badge' }, `prompt cache read ${u.cacheReadInputTokens} tokens`));
       if (u.cacheWriteInputTokens > 0) d.badges.append(h('span', { class: 'badge' }, `prompt cache wrote ${u.cacheWriteInputTokens} tokens`));
       if (s.done.provider === 'mock') d.badges.append(h('span', { class: 'badge mock' }, 'mock model'));
@@ -186,6 +191,8 @@ function raceSummary(runs) {
     parts.push(`Streaming showed the first token ${fmtRatio(buffered.s.ttft / streamed.s.ttft)} sooner than waiting for the whole answer (${fmtMs(streamed.s.ttft)} against ${fmtMs(buffered.s.ttft)}), while the full answer finished ${totalsPhrase(streamed.s.end, buffered.s.end)} (${fmtMs(streamed.s.end)} against ${fmtMs(buffered.s.end)}).`);
   }
   if (ok(hit) && ok(cold)) parts.push(`The repeated question came back from the response cache in ${fmtMs(hit.s.end)}, against ${fmtMs(cold.s.end)} the first time.`);
+  const auto = get('auto');
+  if (ok(auto)) parts.push(`The adaptive gateway showed its first token in ${fmtMs(auto.s.ttft)} and finished in ${fmtMs(auto.s.end)}: ${traceBadges(auto.s.done).map((b) => b.text).join('; ') || 'served by the model'}.`);
   const failed = runs.filter((r) => r.s.status === 'error').length;
   if (failed) parts.push(`${failed} lane${failed > 1 ? 's' : ''} failed; the reason is shown on each.`);
   parts.push('One race is a single sample. The statistics are in the benchmark results.');
@@ -231,6 +238,7 @@ function resultTables(summary, key) {
       h('td', {}, c.name, h('span', { class: 'sub' }, `${c.a} → ${c.b}`)),
       h('td', { class: 'num' }, c.n),
       h('td', { class: 'num' }, `${fmtMs(c.medianA)} → ${fmtMs(c.medianB)}`),
+      h('td', { class: 'num' }, c.saved ? `${fmtMs(c.saved.point)} (${fmtMs(c.saved.lo)} to ${fmtMs(c.saved.hi)})` : 'n/a'),
       h('td', { class: 'num' }, `${fmtRatio(c.point)} (${fmtRatio(c.lo)} to ${fmtRatio(c.hi)})`),
       h('td', {}, chart),
       h('td', {}, h('span', { class: `verdict ${v}` }, v === 'faster' ? 'Faster' : v === 'slower' ? 'Slower' : 'Unclear')));
@@ -238,7 +246,7 @@ function resultTables(summary, key) {
   sections.push(h('h3', {}, `Paired comparisons: ${key === 'ttft' ? 'time to first token' : 'time to complete answer'}`),
     h('p', { class: 'muted' }, 'Each row changes one setting and compares the same question in the same round. Right of 1x means the second setup was faster. The line is the 95% interval.'),
     h('div', { class: 'card scroll', role: 'region', tabindex: 0, 'aria-label': 'Paired comparisons table' },
-      h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Lever'), h('th', { class: 'num' }, 'Pairs'), h('th', { class: 'num' }, 'Median'), h('th', { class: 'num' }, 'Speedup (95% CI)'), h('th', {}, header), h('th', {}, 'Verdict'))), h('tbody', {}, rows))));
+      h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Lever'), h('th', { class: 'num' }, 'Pairs'), h('th', { class: 'num' }, 'Median'), h('th', { class: 'num' }, 'Time saved (95% CI)'), h('th', { class: 'num' }, 'Speedup (95% CI)'), h('th', {}, header), h('th', {}, 'Verdict'))), h('tbody', {}, rows))));
 
   // per-arm latency
   const scale = latencyScale(summary.arms, key);
@@ -252,13 +260,21 @@ function resultTables(summary, key) {
       h('td', { class: 'num' }, `${a.ok}/${a.requests}`),
       h('td', {}, h('div', { class: 'bar' }, fill, tick)),
       h('td', { class: 'num' }, fmtMs(s.p50)), h('td', { class: 'num' }, s.p95 == null ? 'n/a' : fmtMs(s.p95)),
-      h('td', { class: 'num' }, a.promptCacheHit > 0 ? `${Math.round(100 * a.promptCacheHit)}%` : '0%'),
-      h('td', { class: 'num' }, a.responseCacheHit > 0 ? `${Math.round(100 * a.responseCacheHit)}%` : '0%'));
+      h('td', { class: 'num' }, a.correct?.graded ? `${a.correct.right}/${a.correct.graded}` : 'n/a'),
+      h('td', {}, Object.entries(a.sources ?? {}).map(([k, n]) => `${k} ${n}`).join(', ') || 'n/a'));
   });
   sections.push(h('h3', {}, 'Every setup, side by side'),
     h('p', { class: 'muted' }, 'Bar = median, black tick = 95th percentile (blank when there are fewer than 20 samples).'),
     h('div', { class: 'card scroll', role: 'region', tabindex: 0, 'aria-label': 'Per-setup latency table' },
-      h('table', {}, h('thead', {}, h('tr', {}, ...['Setup', 'OK', 'Latency'].map((t, i) => h('th', { class: i === 1 ? 'num' : '' }, t)), h('th', { class: 'num' }, 'Median'), h('th', { class: 'num' }, 'p95'), h('th', { class: 'num' }, 'Prompt cache read'), h('th', { class: 'num' }, 'Response cache hit'))), h('tbody', {}, armRows))));
+      h('table', {}, h('thead', {}, h('tr', {}, ...['Setup', 'OK', 'Latency'].map((t, i) => h('th', { class: i === 1 ? 'num' : '' }, t)), h('th', { class: 'num' }, 'Median'), h('th', { class: 'num' }, 'p95'), h('th', { class: 'num' }, 'Answers correct'), h('th', {}, 'Served by'))), h('tbody', {}, armRows))));
+
+  // paraphrase cache: what it served, and above all what it wrongly served
+  if (summary.semantic?.length) {
+    sections.push(h('h3', {}, 'Paraphrase cache'), h('p', { class: 'muted' }, 'A reworded question should come from the cache. A question that only looks similar (a different number, day, qualifier or negation) must never, because that would be a wrong answer. The cache is built to prefer a miss.'),
+      h('div', { class: 'card scroll', role: 'region', tabindex: 0, 'aria-label': 'Paraphrase cache table' },
+        h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Setup'), h('th', { class: 'num' }, 'Rewordings served'), h('th', { class: 'num' }, 'False hits'))),
+          h('tbody', {}, summary.semantic.map((s) => h('tr', {}, h('td', {}, s.arm), h('td', { class: 'num' }, `${s.paraphrase.hits}/${s.paraphrase.total}`), h('td', { class: 'num' }, `${s.nearmiss.hits}/${s.nearmiss.total}`)))))));
+  }
 
   // network baseline
   if (summary.network?.length) {

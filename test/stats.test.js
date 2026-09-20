@@ -1,6 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { percentile, sorted, summarize, pairedSpeedup, rng, shuffled } from '../bench/stats.js';
+import { percentile, sorted, summarize, pairedSpeedup, pairedDiff, rng, shuffled } from '../bench/stats.js';
+
+test('pairedDiff states the absolute time saved, positive when the second arm is faster', () => {
+  const a = Array.from({ length: 30 }, (_, i) => 1000 + i), b = a.map((x) => x - 700);
+  const d = pairedDiff(a, b, { seed: 2 });
+  assert.equal(d.point, 700);
+  assert.ok(d.lo === 700 && d.hi === 700, 'a constant saving has no spread');
+  const slower = pairedDiff(b, a, { seed: 2 });
+  assert.equal(slower.point, -700);
+  assert.deepEqual(pairedDiff(a, b, { seed: 2 }), d, 'reproducible from the seed');
+  assert.throws(() => pairedDiff([1], []));
+});
+
+test('pairedDiff reports an interval that includes zero when there is only noise', () => {
+  const a = Array.from({ length: 40 }, (_, i) => 500 + ((i * 53) % 41)), b = a.map((x, i) => x + (i % 2 ? 9 : -9));
+  const d = pairedDiff(a, b, { seed: 5 });
+  assert.ok(d.lo <= 0 && d.hi >= 0);
+});
 
 test('percentile interpolates linearly (type 7)', () => {
   const s = sorted([1, 2, 3, 4, 5]);

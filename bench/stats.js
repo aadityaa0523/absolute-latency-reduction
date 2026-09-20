@@ -48,6 +48,20 @@ export function pairedSpeedup(a, b, { reps = 2000, seed = 1, alpha = 0.05 } = {}
   return { n, point: median(a) / median(b), lo: percentile(s, (alpha / 2) * 100), hi: percentile(s, (1 - alpha / 2) * 100) };
 }
 
+// Absolute time saved on matched pairs: median(a_i - b_i) in the metric's own unit (ms), with a percentile-bootstrap
+// CI over pairs. Positive means arm b was faster. Ratios hide how much time is at stake; this states it.
+export function pairedDiff(a, b, { reps = 2000, seed = 1, alpha = 0.05 } = {}) {
+  if (a.length !== b.length || !a.length) throw new Error('pairedDiff needs two equal-length, non-empty arrays');
+  const d = a.map((x, i) => x - b[i]), n = d.length, next = rng(seed), draws = [];
+  for (let r = 0; r < reps; r++) {
+    const s = new Array(n);
+    for (let i = 0; i < n; i++) s[i] = d[Math.floor(next() * n)];
+    draws.push(median(s));
+  }
+  const s = sorted(draws);
+  return { n, point: median(d), lo: percentile(s, (alpha / 2) * 100), hi: percentile(s, (1 - alpha / 2) * 100) };
+}
+
 export function shuffled(xs, next) { // Fisher-Yates with a seeded generator
   const out = [...xs];
   for (let i = out.length - 1; i > 0; i--) { const j = Math.floor(next() * (i + 1)); [out[i], out[j]] = [out[j], out[i]]; }

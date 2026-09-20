@@ -62,6 +62,71 @@ test('validateConfig reports every problem', () => {
   assert.equal(p.length, 5, p.join('\n'));
 });
 
+test('answers are graded against known facts, and a fast wrong answer is recorded as wrong', async () => {
+  const workload = await loadWorkload();
+  const only = { ...workload, prompts: new Map([...workload.prompts].filter(([id]) => ['h01', 's01'].includes(id))) };
+  const texts = { h01: 'The minimum is 75 percent.', s01: 'anything' };
+  let wrongNext = false;
+  const callImpl = async ({ body }) => ({ ok: true, status: 200, ttft_ms: 5, complete_ms: 9, text: wrongNext && body.promptId === 'h01' ? 'It is 80 percent.' : texts[body.promptId], done: { route: 'model', provider: 'bedrock', cache: 'off', usage: { outputTokens: 5 }, trace: { source: 'primary' } } });
+  const config = { endpoints: { e: 'http://x/' }, arms: [{ id: 'fast', endpoint: 'e', model: 'nova-lite-apac' }] };
+  const dir = await mkdtemp(join(tmpdir(), 'alr-'));
+  await runBenchmark({ config, workload: only, rounds: 1, warmup: 0, seed: 1, vantage: 't', outDir: dir, pauseMs: 0, runId: 'g1', strata: ['handbook', 'short'], callImpl });
+  wrongNext = true;
+  const dir2 = await mkdtemp(join(tmpdir(), 'alr-'));
+  await runBenchmark({ config, workload: only, rounds: 1, warmup: 0, seed: 1, vantage: 't', outDir: dir2, pauseMs: 0, runId: 'g2', strata: ['handbook', 'short'], callImpl });
+  const rows = async (d) => (await readFile(join(d, 'raw.jsonl'), 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
+  assert.equal((await rows(dir)).find((r) => r.promptId === 'h01').correct, true);
+  assert.equal((await rows(dir2)).find((r) => r.promptId === 'h01').correct, false);
+  assert.equal((await rows(dir)).find((r) => r.promptId === 's01').correct, null, 'a question with no known answer is not graded');
+});
+
+test('adaptive arms end to end: routing, caches, seeding, per-arm cache isolation and the paraphrase table', async () => {
+  const provider = mockProvider({ ttftMs: (m) => (m.includes('sonnet') ? 60 : 10), tokensPerSec: 400, outTokens: 5 });
+  const srv = await startLocal({ provider });
+  try {
+    const full = await loadWorkload();
+    const ids = ['h01', 'h02', 'h03', 'h05', 'p01', 'p02', 'p03', 'p05', 'x01', 'x03', 'x05', 'l01'];
+    const workload = { ...full, prompts: new Map([...full.prompts].filter(([id]) => ids.includes(id))) };
+    const orphanDir = await mkdtemp(join(tmpdir(), 'alr-'));
+    await assert.rejects(() => runBenchmark({ config: { endpoints: { local: srv.url }, arms: [{ id: 'a', auto: true, endpoint: 'local', seed: true }] }, workload: { ...full, prompts: new Map([['p02', full.prompts.get('p02')]]) }, rounds: 1, warmup: 0, seed: 1, vantage: 't', outDir: orphanDir, runId: 'o', strata: ['paraphrase'] }), /rewords h02/);
+    const config = {
+      endpoints: { local: srv.url },
+      arms: [
+        { id: 'manual', endpoint: 'local', model: 'sonnet-5-global' },
+        { id: 'auto', auto: true, endpoint: 'local', seed: true },
+        { id: 'auto2', auto: true, endpoint: 'local', seed: true },
+        { id: 'router-only', auto: true, endpoint: 'local', responseCache: false, semanticCache: false, fallback: false },
+      ],
+      comparisons: [{ name: 'Adaptive gateway', a: 'manual', b: 'auto' }],
+    };
+    const outDir = await mkdtemp(join(tmpdir(), 'alr-'));
+    await runBenchmark({ config, workload, rounds: 2, warmup: 1, seed: 3, vantage: 'test', outDir, pauseMs: 0, runId: 'ad', strata: ['handbook', 'paraphrase', 'nearmiss', 'long'] });
+    const rows = (await readFile(join(outDir, 'raw.jsonl'), 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
+    const measured = rows.filter((r) => !r.warmup && !r.seed);
+    const src = (r) => r.done?.trace?.source;
+    assert.ok(rows.some((r) => r.seed), 'paraphrases are seeded with the question they reword');
+    assert.ok(measured.every((r) => r.ok), JSON.stringify(measured.find((r) => !r.ok)?.error));
+    for (const arm of ['auto', 'auto2']) {
+      const mine = measured.filter((r) => r.arm === arm);
+      assert.ok(mine.filter((r) => r.stratum === 'handbook').every((r) => src(r) === 'primary'), `${arm}: one arm's cache must never serve another arm`);
+      assert.deepEqual([...new Set(mine.filter((r) => r.stratum === 'paraphrase' && src(r) === 'semantic').map((r) => r.promptId))].sort(), ['p01', 'p03'], `${arm}: which rewordings were served from the cache`);
+      assert.equal(mine.filter((r) => r.stratum === 'nearmiss' && src(r) === 'semantic').length, 0, `${arm}: near-misses must never hit`);
+    }
+    assert.ok(measured.filter((r) => r.arm === 'router-only').every((r) => r.done.cache === 'off' && src(r) === 'primary'));
+    assert.equal(measured.find((r) => r.arm === 'router-only' && r.promptId === 'l01').done.model, 'sonnet-5-global');
+    assert.equal(measured.find((r) => r.arm === 'router-only' && r.promptId === 'h01').done.model, 'nova-lite-apac');
+
+    const { markdown, summary } = await reportDir(outDir);
+    const sem = summary.semantic.find((s) => s.arm === 'auto');
+    assert.deepEqual([sem.paraphrase.hits, sem.paraphrase.total, sem.nearmiss.hits, sem.nearmiss.total], [4, 8, 0, 6]);
+    assert.ok(markdown.includes('## Paraphrase cache'));
+    assert.ok(!summary.warnings.some((w) => /near-miss/.test(w)));
+    const c = summary.comparisons.find((x) => x.metric === 'ttft_ms');
+    assert.ok(c.saved && Number.isFinite(c.saved.point), 'comparisons state the absolute time saved');
+    assert.ok(!/[^\x00-\x7F]/.test(markdown), 'report should be plain ASCII');
+  } finally { await srv.close(); }
+});
+
 test('the report warns when a reasoning model was measured', async () => {
   const { buildReport } = await import('../bench/report.js');
   const rec = (arm, reasoning) => ({ arm, attempt: 1, warmup: false, ok: true, round: 0, promptId: 'h01', stratum: 'handbook', ttft_ms: 500, complete_ms: 900, done: { route: 'model', provider: 'bedrock', cache: 'off', reasoning, usage: { outputTokens: 20 } } });

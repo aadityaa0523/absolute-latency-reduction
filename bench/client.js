@@ -10,7 +10,7 @@ export function call({ url, method = 'POST', body, fresh = false, timeoutMs = 60
     const u = new URL(url), lib = u.protocol === 'https:' ? https : http;
     const agent = fresh ? new lib.Agent({ keepAlive: false }) : warm[u.protocol];
     const t0 = clock();
-    const rec = { ok: false, status: null, reused: false, dns_ms: 0, tcp_ms: 0, tls_ms: 0, headers_ms: null, ttfb_ms: null, ttft_ms: null, complete_ms: null, end_ms: null, done: null, error: null };
+    const rec = { ok: false, status: null, reused: false, dns_ms: 0, tcp_ms: 0, tls_ms: 0, headers_ms: null, ttfb_ms: null, ttft_ms: null, complete_ms: null, end_ms: null, text: '', done: null, error: null };
     let finished = false;
     const finish = () => { if (finished) return; finished = true; if (fresh) agent.destroy(); resolve(rec); };
     const fail = (name, message) => { rec.error ??= { code: 'network', name, message }; rec.end_ms ??= clock() - t0; finish(); };
@@ -18,7 +18,7 @@ export function call({ url, method = 'POST', body, fresh = false, timeoutMs = 60
     const onLine = (line, now) => {
       let ev;
       try { ev = JSON.parse(line); } catch { return; }
-      if (ev.t === 'token' && rec.ttft_ms === null) rec.ttft_ms = now;
+      if (ev.t === 'token') { rec.ttft_ms ??= now; rec.text += ev.text; }
       else if (ev.t === 'done') { rec.done = ev; rec.complete_ms = now; }
       else if (ev.t === 'error') { rec.error = ev; rec.complete_ms = now; }
       else if (ev.ok === true && ev.t === undefined) { rec.done = { route: 'ping', ...ev }; rec.complete_ms = now; }

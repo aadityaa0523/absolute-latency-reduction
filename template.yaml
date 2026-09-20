@@ -14,6 +14,23 @@ Parameters:
     MinValue: -1
     Description: Cost brake for the public URL. -1 means none. New accounts often have a total limit of 10, which leaves nothing to reserve, so the account limit is then the cap.
 
+  TierFast:
+    Type: String
+    Default: nova-lite-apac
+    AllowedValues: [nova-lite-apac, nova-lite-inregion, nova-lite-us, nova-lite-eu, nova-micro-apac, nova-2-lite-global]
+    Description: Allowlisted model handle (relay/models.js) the router uses for short factual questions. It must be reachable from this Region.
+  TierStrong:
+    Type: String
+    Default: sonnet-5-global
+    AllowedValues: [sonnet-5-global, haiku-4-5-global]
+    Description: Allowlisted model handle the router uses for lists, steps and explanations.
+  BudgetMs:
+    Type: Number
+    Default: 2500
+    MinValue: 200
+    MaxValue: 10000
+    Description: Milliseconds the strong model gets to produce a first token before the fallback model is started too.
+
 Conditions:
   HasReservedConcurrency: !Not [!Equals [!Ref ReservedConcurrency, -1]]
 
@@ -96,6 +113,30 @@ Resources:
       Environment:
         Variables:
           CACHE_TABLE: !Ref CacheTable
+          TIER_FAST: !Ref TierFast
+          TIER_STRONG: !Ref TierStrong
+          BUDGET_MS: !Ref BudgetMs
+
+  # Keeps one container initialised so the first visitor does not pay a cold start. Runs every 5 minutes, which is also
+  # inside the 5 minute prompt-cache lifetime of the Nova models.
+  KeepWarmRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Keep the relay container warm
+      ScheduleExpression: rate(5 minutes)
+      State: ENABLED
+      Targets:
+        - Id: relay
+          Arn: !GetAtt RelayFunction.Arn
+          Input: '{"warm": true}'
+
+  KeepWarmPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref RelayFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt KeepWarmRule.Arn
 
   RelayUrl:
     Type: AWS::Lambda::Url
